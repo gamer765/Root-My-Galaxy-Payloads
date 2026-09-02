@@ -148,6 +148,20 @@
         "size": 3737048
       }
     },
+	{
+	  "payloadId": "e3q-dzf2-exploit-dzg1-ksun-test",
+	  "displayName": "S24 Ultra | DZF2 exploit + DZG1 KernelSU Next test",
+	  "models": ["SM-S928U1"],
+	  "kernelVersions": ["6.1.145"],
+	  "exploit": {
+		"url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQS6DZF2/cve-2026-43499-app.so",
+		"size": 104128
+	  },
+	  "kernelsu": {
+		"url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQS6DZG1-kdp-ksun-3.3.0",
+		"size": 3737048
+	  }
+	},
     {
       "payloadId": "e3q-S928USQS6DZF2",
       "displayName": "Galaxy S24 Ultra | Kernel 6.1.145",
