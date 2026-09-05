@@ -424,6 +424,24 @@
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQS6DZG1-kdp-ksun-3.3.0-debugless",
         "size": 4073464
       }
+    },
+    {
+      "payloadId": "e3q-S928USQS6DZG1-ksun-clean-20260905",
+      "displayName": "Galaxy S24 Ultra SM-S928U1 | DZG1 clean rebuild 20260905 | KernelSU Next 3.3.0 (test)",
+      "models": [
+        "SM-S928U1"
+      ],
+      "kernelVersions": [
+        "6.1.145"
+      ],
+      "exploit": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQS6DZG1/cve-2026-43499-app.so",
+        "size": 104128
+      },
+      "kernelsu": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQS6DZG1-kdp-ksun-3.3.0-clean-20260905",
+        "size": 5509824
+      }
     }
   ]
 }
