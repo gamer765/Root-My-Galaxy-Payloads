@@ -159,7 +159,7 @@
     },
     {
       "payloadId": "e3q-S928USQS6DZH3",
-      "displayName": "Galaxy S24 Ultra SM-S928U1 | DZH3 | Kernel 6.1.145 | KernelSU Next 3.3.0",
+      "displayName": "Galaxy S24 Ultra SM-S928U1 | DZH3 | S928 legacy fops-reclaim16 | Kernel 6.1.145 | KernelSU Next 3.3.0",
       "models": [
         "SM-S928U1"
       ],
