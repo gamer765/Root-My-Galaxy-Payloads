@@ -24,6 +24,9 @@ It intentionally does not contain Android application source code.
 | `dm3q-S9180ZHS8FZF5` | Galaxy S23 Ultra `SM-S9180` | `5.15.189` | Test in progress |
 | `dm2q-S916BXXSAFZG1` | Galaxy S23+ `SM-S916B` | `5.15.189` | Experimental: hardware root from ADB shell; not in app feed |
 | `dm3q-S918BXXSAFZF5` | Galaxy S23 Ultra `SM-S918B` | `5.15.189` | Confirmed working: full chain through the app (Shizuku mode) incl. KernelSU late-load and granted `su` |
+| `e3q-S928USQU6ZZHL` | Galaxy S24 Ultra `SM-S928U1` (Android 17 beta ZZHL) | `6.1.162` | Experimental; not hardware-tested |
+
+The ZZHL row is an experimental Android 17 beta port. It uses the `USQU6ZZHL` release string observed in the supplied vendor boot image and has not been hardware-validated; keep a recovery path available during testing.
 
 The S916B FZG1 profile is shell-only today. Its exact tracefs route works from `adb shell`, but direct app-domain execution is not supported. Root My Galaxy would need to delegate the native runner through an authorized shell bridge such as Shizuku. See [`artifacts/dm2q-S916BXXSAFZG1/README.md`](artifacts/dm2q-S916BXXSAFZG1/README.md).
 
