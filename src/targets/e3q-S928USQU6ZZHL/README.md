@@ -30,7 +30,7 @@ patch, while the daemon is built from KernelSU Next v3.3.0. The module has an
 empty `__versions` section and is intended for the project’s manual-relocation
 late-load path.
 
-Before putting this target in a public support feed, verify the exact device
+The support feed entry is labeled experimental. Verify the exact device
 fingerprint, run the app payload once with a USB recovery path available, and
 capture `/sys/fs/pstore`/bugreport output if it hangs or reboots. Keep the
 known-good DZH3/DZG1 entry unchanged while testing.
