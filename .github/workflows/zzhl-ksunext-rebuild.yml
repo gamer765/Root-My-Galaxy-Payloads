@@ -52,6 +52,7 @@ jobs:
           CONFIG_KSU_SAMSUNG_KDP=y \
           CONFIG_KSU_SAMSUNG_RKP=y \
           CONFIG_KSU_SAMSUNG_DEFEX=y \
+          SKIP_BTF=1 \
           CC=clang make -C "$KDIR" \
             M="$KSU_ROOT/kernel" src="$KSU_ROOT/kernel" modules -j"$(nproc)"
 
