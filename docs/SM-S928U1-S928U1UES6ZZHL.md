@@ -32,7 +32,23 @@ using the ZZHL-specific target constants and P0 fingerprint. The resulting
 
 The prior current-engine experimental payload is retained at
 `artifacts/e3q-S928USQU6ZZHL/cve-2026-43499-app.experimental.previous.so` for
-rollback. The KernelSU Next daemon and module were not changed by this rebuild.
+rollback. The standalone ZZHL module is unchanged; the KernelSU Next daemon
+was rebuilt separately with the synchronous late-load path described below.
+
+## KernelSU Next daemon rebuild
+
+The daemon was rebuilt from KernelSU Next source commit
+`3b18216f71df189ab3d1b1ce0bdb21be1268e771` using the explicit 3.3.0 build
+metadata and the Samsung staging patch. The patch keeps `ksud late-load`
+synchronous until manual module relocation/loading completes, stages the
+daemon before the security-context transition, and finishes installation only
+after the module is active. This addresses the earlier `rc=13` control-fd
+check racing the detached stock `ksud` process.
+
+The resulting stripped AArch64 PIE is 3,748,216 bytes with SHA-256
+`04e261840b9c0127f8ec199f10b215d35541652cbe5e8593ed3aa31406ee29f6`. Its
+embedded `android14-6.1_kernelsu.ko` matches the standalone ZZHL module
+(`15295641b64c3b97e69e1aeb183ed65ab7dd2b8ebff52a2b3a33c93ad1cd646f`).
 
 ## Verification performed
 
@@ -46,6 +62,9 @@ rollback. The KernelSU Next daemon and module were not changed by this rebuild.
   the recovered ZZHL `vmlinux.elf`.
 - The daemon is a stripped AArch64 PIE and embeds the newly built module under
   the Android 14/6.1 asset name `android14-6.1_kernelsu.ko`.
+- The daemon contains the synchronous Next late-load markers (`Failed to stage
+  ksud` and `Failed to finish ksud installation`) and explicit version
+  metadata `33214` / `3.3.0`.
 
 These checks do not substitute for a hardware run. Samsung’s unpublished
 vendor configuration and runtime KDP/RKP behavior can still differ from the
