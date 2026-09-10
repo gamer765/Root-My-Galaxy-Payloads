@@ -1,0 +1,260 @@
+name: Build ZZHL KernelSU Next daemon
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/zzhl-ksud-build.yml"
+      - "kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+
+      - name: Install host build dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang lld llvm
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK r29
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;29.0.14206865"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Fetch exact KernelSU Next source
+        env:
+          KSU_COMMIT: 3b18216f71df189ab3d1b1ce0bdb21be1268e771
+        run: |
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git "$RUNNER_TEMP/ksunext"
+          git -C "$RUNNER_TEMP/ksunext" checkout "$KSU_COMMIT"
+
+      - name: Apply synchronous Samsung late-load patch
+        working-directory: ${{ runner.temp }}/ksunext
+        run: |
+          git apply --whitespace=nowarn - <<'PATCH'
+          diff --git a/userspace/ksud/build.rs b/userspace/ksud/build.rs
+          index 9f881966..b74ee09b 100644
+          --- a/userspace/ksud/build.rs
+          +++ b/userspace/ksud/build.rs
+          @@ -5,6 +5,17 @@ use std::path::Path;
+           use std::process::Command;
+           
+           fn get_git_version() -> Result<(u32, String), std::io::Error> {
+          +    // Explicit metadata also makes source-archive builds reproducible without
+          +    // a .git directory. Both values must be supplied together.
+          +    match (env::var("KSU_BUILD_VERSION_CODE"), env::var("KSU_BUILD_VERSION_NAME")) {
+          +        (Ok(code), Ok(name)) => {
+          +            let code = code.parse::<u32>().expect("Invalid KSU_BUILD_VERSION_CODE");
+          +            assert!(code > 0 && !name.trim().is_empty(), "Empty KSU build version");
+          +            return Ok((code, name));
+          +        }
+          +        (Err(env::VarError::NotPresent), Err(env::VarError::NotPresent)) => {}
+          +        _ => panic!("Set both KSU_BUILD_VERSION_CODE and KSU_BUILD_VERSION_NAME"),
+          +    }
+               let output = Command::new("git")
+                   .args(["rev-list", "--count", "HEAD"])
+                   .output()?;
+          @@ -55,6 +66,8 @@ fn configure_bindgen() {
+           }
+           
+           fn main() {
+          +    println!("cargo:rerun-if-env-changed=KSU_BUILD_VERSION_CODE");
+          +    println!("cargo:rerun-if-env-changed=KSU_BUILD_VERSION_NAME");
+               let (code, name) = match get_git_version() {
+                   Ok((code, name)) => (code, name),
+                   Err(_) => {
+          diff --git a/userspace/ksud/src/late_load.rs b/userspace/ksud/src/late_load.rs
+          index e8b34d3d..715fc35b 100644
+          --- a/userspace/ksud/src/late_load.rs
+          +++ b/userspace/ksud/src/late_load.rs
+          @@ -1,7 +1,6 @@
+           use anyhow::{Context, Result};
+           use log::{info, warn};
+           use rustix::cstr;
+          -use std::process::Command;
+           
+           use crate::module::{handle_updated_modules, prune_modules};
+           use crate::{assets, defs, init_event, metamodule, restorecon, utils};
+          @@ -35,11 +34,17 @@ fn dump_process_info(label: &str) {
+               );
+           }
+           
+          -pub fn run(package_name: &String, kmi: Option<String>, allow_shell: bool) -> Result<()> {
+          -    utils::daemonize(false)?;
+          +pub fn run(_package_name: &String, kmi: Option<String>, allow_shell: bool) -> Result<()> {
+          +    // The calling installer waits for this process before checking the driver.
+          +    // Do not detach: success must mean module loading has actually completed.
+               info!("late-load command triggered!");
+               dump_process_info("late-load start");
+           
+          +    // Preserve the Samsung port's pre-load staging order. Module loading may
+          +    // change this process's security context; copy/rename the daemon first.
+          +    utils::stage_daemon_from("/data/local/tmp/.ksud-stage")
+          +        .context("Failed to stage ksud")?;
+          +
+               // 1. Check if KernelSU is already loaded
+               if ksuinit::has_kernelsu() {
+                   info!("KernelSU already loaded, skip loading ko");
+          @@ -79,7 +84,7 @@ pub fn run(package_name: &String, kmi: Option<String>, allow_shell: bool) -> Result<()> {
+                   warn!("clear temp configs failed: {e}");
+               }
+           
+          -    utils::install(None).context("Failed to install ksud")?;
+          +    utils::finish_install(None).context("Failed to finish ksud installation")?;
+           
+               // 5. Handle module updates
+               if let Err(e) = handle_updated_modules() {
+          @@ -130,16 +135,5 @@ pub fn run(package_name: &String, kmi: Option<String>, allow_shell: bool) -> Result<()> {
+               // 13. Execute boot-completed stage scripts (non-blocking)
+               init_event::run_stage("boot-completed", false);
+           
+          -    // 14. Restart Manager so it gets a fresh ksu fd from the newly loaded kernel module
+          -    info!("Restarting KernelSU Next Manager {package_name}...");
+          -    let _ = Command::new("am").args(["force-stop", package_name]).status();
+          -    let _ = Command::new("am")
+          -        .args([
+          -            "start",
+          -            "-n",
+          -            &format!("{package_name}/com.rifsxd.ksunext.ui.MainActivity"),
+          -        ])
+          -        .status();
+          -
+               Ok(())
+           }
+          diff --git a/userspace/ksud/src/utils.rs b/userspace/ksud/src/utils.rs
+          index a43f1bc8..ba6f55e4 100644
+          --- a/userspace/ksud/src/utils.rs
+          +++ b/userspace/ksud/src/utils.rs
+          @@ -1,7 +1,8 @@
+           use anyhow::{Context, Error, Ok, Result, bail};
+          -use rustix::fs::{Mode, OFlags, open};
+          +use rustix::fs::{Mode, OFlags, chown, open};
+           use rustix::process::setpgid;
+           use rustix::stdio::{dup2_stderr, dup2_stdin, dup2_stdout};
+          +use rustix::thread::{Gid, Uid};
+           use std::{
+               fs::{File, OpenOptions, create_dir_all, remove_file, write},
+               io::{
+          @@ -189,13 +190,40 @@ fn link_ksud_to_bin() -> Result<()> {
+               Ok(())
+           }
+           
+          -pub fn install(libadbroot: Option<PathBuf>) -> Result<()> {
+          +pub fn stage_daemon() -> Result<()> {
+          +    ensure_dir_exists(defs::ADB_DIR)?;
+          +
+          +    let current_exe = std::env::current_exe().with_context(|| "Failed to get self exe path")?;
+          +    if current_exe == Path::new(defs::DAEMON_PATH) {
+          +        return Ok(());
+          +    }
+          +
+          +    let daemon = std::fs::read(&current_exe)
+          +        .with_context(|| format!("Failed to read {}", current_exe.display()))?;
+          +    std::fs::write(defs::DAEMON_PATH, daemon)
+          +        .with_context(|| format!("Failed to write {}", defs::DAEMON_PATH))?;
+          +    #[cfg(unix)]
+          +    set_permissions(defs::DAEMON_PATH, Permissions::from_mode(0o755))?;
+          +
+          +    Ok(())
+          +}
+          +
+          +pub fn stage_daemon_from(staged_exe: impl AsRef<Path>) -> Result<()> {
+               ensure_dir_exists(defs::ADB_DIR)?;
+          -    let _ = std::fs::remove_file(defs::DAEMON_PATH);
+          -    std::fs::copy(
+          -        std::env::current_exe().with_context(|| "Failed to get self exe path")?,
+          -        defs::DAEMON_PATH,
+          -    )?;
+          +    std::fs::rename(staged_exe.as_ref(), defs::DAEMON_PATH).with_context(|| {
+          +        format!(
+          +            "Failed to rename {} to {}",
+          +            staged_exe.as_ref().display(),
+          +            defs::DAEMON_PATH
+          +        )
+          +    })?;
+          +    chown(defs::DAEMON_PATH, Some(Uid::ROOT), Some(Gid::ROOT))?;
+          +    #[cfg(unix)]
+          +    set_permissions(defs::DAEMON_PATH, Permissions::from_mode(0o755))?;
+          +    Ok(())
+          +}
+          +
+          +pub fn finish_install(libadbroot: Option<PathBuf>) -> Result<()> {
+               restorecon::lsetfilecon(defs::DAEMON_PATH, restorecon::KSU_CON)?;
+               // install binary assets
+               assets::ensure_binaries(false).with_context(|| "Failed to extract assets")?;
+          @@ -211,6 +239,11 @@ pub fn install(libadbroot: Option<PathBuf>) -> Result<()> {
+               Ok(())
+           }
+           
+          +pub fn install(libadbroot: Option<PathBuf>) -> Result<()> {
+          +    stage_daemon()?;
+          +    finish_install(libadbroot)
+          +}
+          +
+           pub fn uninstall(package_name: &str) -> Result<()> {
+               if Path::new(defs::MODULE_DIR).exists() {
+                   println!("- Uninstall modules..");
+          @@ -255,10 +288,6 @@ pub fn daemonize_with<F: FnOnce() -> Result<()>>(use_init_pgrp: bool, configure: F) -> Result<()> {
+               Ok(())
+           }
+           
+          -pub fn daemonize(use_init_pgrp: bool) -> Result<()> {
+          -    daemonize_with(use_init_pgrp, || Ok(()))
+          -}
+          -
+           pub fn create_daemon(use_init_pgrp: bool) -> Result<bool> {
+               create_daemon_with(use_init_pgrp, || Ok(()))
+           }
+          PATCH
+
+      - name: Embed the ZZHL-specific KernelSU Next module
+        env:
+          KSU_ROOT: ${{ runner.temp }}/ksunext
+        run: |
+          install -m 0644 kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
+            "$KSU_ROOT/userspace/ksud/bin/aarch64/android14-6.1_kernelsu.ko"
+          sha256sum "$KSU_ROOT/userspace/ksud/bin/aarch64/android14-6.1_kernelsu.ko"
+
+      - name: Build KernelSU Next 3.3.0 daemon
+        env:
+          KSU_ROOT: ${{ runner.temp }}/ksunext
+          KSU_BUILD_VERSION_CODE: "33214"
+          KSU_BUILD_VERSION_NAME: "3.3.0"
+        run: |
+          NDK="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$NDK/sysroot -I$NDK/sysroot/usr/include/aarch64-linux-android -I$NDK/sysroot/usr/include"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK/bin/aarch64-linux-android35-clang"
+          cargo build --locked --target aarch64-linux-android --release \
+            --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
+          mkdir -p dist
+          cp "$KSU_ROOT/userspace/ksud/target/aarch64-linux-android/release/ksud" \
+            dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-sync
+
+      - name: Verify the built daemon statically
+        run: |
+          daemon=dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-sync
+          file "$daemon"
+          test "$(stat -c %s "$daemon")" -gt 3000000
+          strings "$daemon" | grep -Fq 'Failed to stage ksud'
+          strings "$daemon" | grep -Fq 'Failed to finish ksud installation'
+          strings "$daemon" | grep -Fq '332143.3.0'
+          sha256sum "$daemon" > dist/SHA256SUMS
+
+      - name: Upload daemon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zzhl-ksud-ksun-3.3.0-sync
+          path: dist/
