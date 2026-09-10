@@ -235,7 +235,10 @@ jobs:
           KSU_BUILD_VERSION_NAME: "3.3.0"
         run: |
           NDK="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export PATH="$NDK/bin:$PATH"
           export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$NDK/sysroot -I$NDK/sysroot/usr/include/aarch64-linux-android -I$NDK/sysroot/usr/include"
+          export CC_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang"
+          export CXX_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang++"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK/bin/aarch64-linux-android35-clang"
           cargo build --locked --target aarch64-linux-android --release \
             --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
