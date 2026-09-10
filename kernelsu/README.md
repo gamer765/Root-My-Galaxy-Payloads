@@ -4,22 +4,32 @@ The files in this directory are built from KernelSU `v3.2.5`, commit
 `b0bc817b4e966aa6aa830834eaf6ef765d821d40`. They are not interchangeable
 between KMIs.
 
-## ZZHL KernelSU Next artifacts — quarantined
+## ZZHL KernelSU Next artifacts — automatic testing enabled
 
-The ZZHL Android 17 beta KernelSU payload is withdrawn from the support feed.
-Both the generic DDK pair and the legacy S928-shaped pair crashed the phone
-when the module entered late-load. All ZZHL KernelSU binaries are retained in
-`kernelsu/quarantine/` for forensic comparison only; do not install them.
+The ZZHL Android 17 beta pair is published for the exact SM-S928U1 +
+6.1.162 support-feed match. Automatic installation is enabled for that
+profile.
 
-The last legacy-shaped candidate was built from KernelSU Next commit
-`3b18216f71df189ab3d1b1ce0bdb21be1268e771` with the Samsung compatibility and
-synchronous staging patch. Its daemon was 3,727,928 bytes with SHA-256
-`556b8c3f0eabd1de73a7dba26187ebcbcb4d70b627981246ac3fcbdbf35c2487`; its
-311,160-byte module was `39c87e32d5c083dc3043e324065aab6e535df5214e644823c89de1613e56f987`.
-The module has the legacy S928 DZG1 shape (`this_module=0x400`,
-`__versions=0`, no `.printk_index`) but that is not sufficient to prove ABI
-compatibility with ZZHL’s 6.1.162 vendor kernel. No source-identical ZZHL
-module build is available yet.
+- kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 — KernelSU Next 3.3.0
+  AArch64 daemon, 3,762,384 bytes, SHA-256
+  f1fe1704644bc00fa986d96ca1c58937d1be5172a38e3056ef9a74d969002485.
+- kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko — standalone audit
+  copy of the module embedded in that daemon, 435,088 bytes, SHA-256
+  289dc3e491599278544ec6ba91a40e501542162a875616c2915ea9a8e0cb9d2f.
+- artifacts/e3q-S928USQU6ZZHL/cve-2026-43499-app.so — legacy S928 exploit
+  payload for the ZZHL profile.
+
+The module was freshly built from KernelSU Next commit
+3b18216f71df189ab3d1b1ce0bdb21be1268e771, with only the kernel-side Samsung
+KDP/RKP/DEFEX compatibility layer applied. The daemon uses the Next userspace
+late-load/control logic; its only userspace source adjustment is a
+build-metadata override. No original KernelSU module or daemon is part of the
+active pair.
+
+The standalone .ko is for auditing and debugging. Root My Galaxy consumes the
+embedded module from ksud. The earlier ZZHL candidates remain in
+kernelsu/quarantine/ for forensic comparison. The active pair is statically
+verified but has not yet been hardware-tested on ZZHL.
 
 ## Versioned artifacts
 
@@ -68,10 +78,10 @@ Root Checker were then verified: Manager reported `Working <LKM> [Jailbreak
 mode]`, version `32525-2`, and one superuser, while Root Checker reported root
 access installed. The root remains per-boot because no boot image was
 modified; reboot survival is untested.
-The ZZHL KernelSU pair is quarantined after both the generic and legacy-shaped
-variants crashed during on-device module late-load. The artifacts remain
-available only for forensic analysis; there is no ZZHL KernelSU entry in the
-support feed until an exact vendor-compatible module can be built and tested.
+The earlier ZZHL KernelSU candidates remain quarantined after crashing during
+on-device module late-load. The current pure KernelSU Next pair is published
+separately for the exact ZZHL automatic-test feed match; it has passed static
+provenance checks but is not yet hardware-tested on ZZHL.
 The E2S pair is tied to the S926B DZDR release,
 static-audited, and device-tested: late-load reports version code `32525`, and
 the loader runs in `u:r:ksu:s0`. The E1S pair is tied to the S921B DZE1 release,
