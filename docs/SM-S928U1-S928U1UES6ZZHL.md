@@ -1,5 +1,8 @@
 # SM-S928U1 S928USQU6ZZHL build report
 
+Status: the ZZHL KernelSU pair is quarantined after both tested candidates
+crashed the phone during module late-load. It is not in the support feed.
+
 ## Target evidence
 
 | Item | Value |
@@ -72,8 +75,10 @@ embedded `android14-6.1_kernelsu.ko` matches the standalone module
   ksud` and `Failed to finish ksud installation`) and explicit version
   metadata `33214` / `3.3.0`.
 
-These checks do not substitute for a hardware run. The active KO is a legacy
-S928 DZG1-shaped module with only a same-length release-string retarget; it is
-not a source-identical ZZHL vendor-module build. Samsung’s unpublished vendor
-configuration and runtime KDP/RKP behavior can still differ, so the pair must
-be hardware-retested before it is treated as validated.
+These checks do not substitute for a hardware run. The tested legacy-shaped
+candidate crashed during module late-load, as did the preceding generic DDK
+candidate. The KO is not a source-identical ZZHL vendor-module build, and its
+static invariants do not establish compatibility with Samsung’s unpublished
+6.1.162 vendor configuration. The pair is therefore quarantined until a real
+ZZHL source/configuration or an equivalent target-derived ABI description is
+available.

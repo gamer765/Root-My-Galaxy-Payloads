@@ -6,18 +6,18 @@ on:
     paths:
       - ".github/workflows/zzhl-ksunext-rebuild.yml"
       - "kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
-      - "kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-legacy-s928.ko"
+      - "kernelsu/quarantine/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-legacy-s928.ko"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   KSU_COMMIT: 3b18216f71df189ab3d1b1ce0bdb21be1268e771
   TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6ZZHL
   TARGET_KMI: android14-6.1
   MODULE_NAME: android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko
-  LEGACY_MODULE_SOURCE: kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-legacy-s928.ko
+  LEGACY_MODULE_SOURCE: kernelsu/quarantine/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-legacy-s928.ko
 
 jobs:
   build-module:
@@ -229,55 +229,8 @@ jobs:
           name: zzhl-kernelsu-next-pair
           path: dist/
 
-      - name: Publish corrected pair and rollback copies
+      - name: Keep ZZHL candidate quarantined
         run: |
           set -euo pipefail
-          daemon=dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-legacy-s928
-          module="out/$MODULE_NAME"
-          old_daemon=kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-regular-module-previous
-          old_module=kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-regular-previous.ko
-          generic_daemon=kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-generic-ddk-previous
-          generic_module=kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-generic-ddk-previous.ko
-          if [[ ! -e "$old_daemon" ]]; then
-            install -m 0755 kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 "$old_daemon"
-          fi
-          if [[ ! -e "$old_module" ]]; then
-            install -m 0644 kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko "$old_module"
-          fi
-          if [[ ! -e "$generic_daemon" ]]; then
-            install -m 0755 kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 "$generic_daemon"
-          fi
-          if [[ ! -e "$generic_module" ]]; then
-            install -m 0644 kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko "$generic_module"
-          fi
-          install -m 0755 "$daemon" kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0
-          install -m 0644 "$module" kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko
-          daemon_size=$(stat -c %s kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0)
-          python3 - "$daemon_size" <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          path = Path("support/targets-v3.json")
-          text = path.read_text()
-          size = sys.argv[1]
-          pattern = r'("payloadId": "e3q-S928USQU6ZZHL".*?"kernelsu": \{\s*"url": "[^"]+",\s*"size": )\d+'
-          updated, count = re.subn(pattern, r'\g<1>' + size, text, count=1, flags=re.S)
-          if count != 1:
-              raise SystemExit("ZZHL support-feed entry not found")
-          path.write_text(updated)
-          PY
-          sha256sum \
-            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
-            kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
-            "$old_daemon" "$old_module"
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add \
-            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
-            kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
-            "$old_daemon" "$old_module" \
-            "$generic_daemon" "$generic_module" \
-            support/targets-v3.json
-          git commit -m "Rebuild ZZHL KernelSU Next pair with legacy S928 module"
-          git push origin HEAD:main
+          echo "ZZHL KernelSU Next artifacts are quarantined after on-device module-load crashes."
+          echo "The workflow only uploads the build for offline analysis; it does not publish or modify the support feed."

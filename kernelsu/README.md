@@ -4,27 +4,22 @@ The files in this directory are built from KernelSU `v3.2.5`, commit
 `b0bc817b4e966aa6aa830834eaf6ef765d821d40`. They are not interchangeable
 between KMIs.
 
-## KernelSU Next 3.3.0 S928 builds
+## ZZHL KernelSU Next artifacts — quarantined
 
-The `ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0` artifact is a KernelSU Next
-userspace build alongside the regular KernelSU v3.2.5 userspace listed below.
-It is built from Next source commit `3b18216f71df189ab3d1b1ce0bdb21be1268e771`,
-with the Samsung synchronous late-load/staging patch and the legacy S928
-KernelSU Next module shape embedded after a same-length vermagic retarget to
-the ZZHL release. The published daemon is 3,727,928 bytes with SHA-256
-`556b8c3f0eabd1de73a7dba26187ebcbcb4d70b627981246ac3fcbdbf35c2487`; the
-standalone module is 311,160 bytes with SHA-256
-`39c87e32d5c083dc3043e324065aab6e535df5214e644823c89de1613e56f987`.
+The ZZHL Android 17 beta KernelSU payload is withdrawn from the support feed.
+Both the generic DDK pair and the legacy S928-shaped pair crashed the phone
+when the module entered late-load. All ZZHL KernelSU binaries are retained in
+`kernelsu/quarantine/` for forensic comparison only; do not install them.
 
-The active daemon and module are one pair. The module preserves the stripped
-legacy S928 DZG1 KernelSU Next shape (`this_module=0x400`, `__versions=0`, and
-no `.printk_index`); static checks pass, but the ZZHL pair still requires a
-hardware retest because no complete ZZHL vendor source/vmlinux was available
-for a source-identical module build. The previous generic DDK pair is retained
-as `ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-generic-ddk-previous` and
-`android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-generic-ddk-previous.ko`.
-The standalone `.ko` remains an audit/debug copy; the app consumes the module
-embedded in the target-specific Next daemon.
+The last legacy-shaped candidate was built from KernelSU Next commit
+`3b18216f71df189ab3d1b1ce0bdb21be1268e771` with the Samsung compatibility and
+synchronous staging patch. Its daemon was 3,727,928 bytes with SHA-256
+`556b8c3f0eabd1de73a7dba26187ebcbcb4d70b627981246ac3fcbdbf35c2487`; its
+311,160-byte module was `39c87e32d5c083dc3043e324065aab6e535df5214e644823c89de1613e56f987`.
+The module has the legacy S928 DZG1 shape (`this_module=0x400`,
+`__versions=0`, no `.printk_index`) but that is not sufficient to prove ABI
+compatibility with ZZHL’s 6.1.162 vendor kernel. No source-identical ZZHL
+module build is available yet.
 
 ## Versioned artifacts
 
@@ -38,8 +33,6 @@ embedded in the target-specific Next daemon.
 | `ksud-A366WVLS3AYG1-kdp` | Same exact A36 build | `android15-6.6` | Device-tested late-load binary embedding the exact A36 no-patch-text module |
 | `android14-6.1_kernelsu-e3q-S928USQS6DZF2-kdp.ko` | `SM-S928U/SM-S928U1`, `S928USQS6DZF2` | `android14-6.1` | Exact E3Q module with target `vermagic`, audited for manual relocation |
 | `ksud-e3q-S928USQS6DZF2-kdp` | Same exact E3Q build | `android14-6.1` | Device-tested late-load binary embedding the E3Q module |
-| `android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko` | `SM-S928U1`, `S928USQU6ZZHL` | `android14-6.1` | Legacy S928 KernelSU Next 3.3.0 module shape retargeted to the ZZHL `vermagic`; static invariants verified |
-| `ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0` | `SM-S928U1`, `S928USQU6ZZHL` | `android14-6.1` | KernelSU Next 3.3.0 late-load binary embedding the matching legacy-shaped module |
 | `android14-6.1_kernelsu-e3q-S928BXXS6DZF2-kdp.ko` | `SM-S928B`, `S928BXXS6DZF2` | `android14-6.1` | Exact S928B no-patch-text module with target `vermagic`, audited for manual relocation |
 | `ksud-e3q-S928BXXS6DZF2-kdp` | Same exact S928B build | `android14-6.1` | Late-load binary embedding the S928B no-patch-text module; module-load hardware-tested |
 | `android14-6.1_kernelsu-e2s-S926BXXUEDZDR-kdp.ko` | `SM-S926B`, `S926BXXUEDZDR` | `android14-6.1` | Exact E2S no-patch-text module with target `vermagic`, audited for manual relocation |
@@ -75,12 +68,10 @@ Root Checker were then verified: Manager reported `Working <LKM> [Jailbreak
 mode]`, version `32525-2`, and one superuser, while Root Checker reported root
 access installed. The root remains per-boot because no boot image was
 modified; reboot survival is untested.
-The ZZHL pair is tied to the full `S928USQU6ZZHL` release string and uses the
-KernelSU Next 3.3.0 source tree with the Samsung compatibility port. The daemon
-embeds the exact standalone legacy S928-shaped module byte-for-byte, and both
-artifacts pass the static provenance checks. This is a hardware-retest
-candidate, not a source-identical ZZHL vendor-module build; hardware validation
-of the pair is still pending.
+The ZZHL KernelSU pair is quarantined after both the generic and legacy-shaped
+variants crashed during on-device module late-load. The artifacts remain
+available only for forensic analysis; there is no ZZHL KernelSU entry in the
+support feed until an exact vendor-compatible module can be built and tested.
 The E2S pair is tied to the S926B DZDR release,
 static-audited, and device-tested: late-load reports version code `32525`, and
 the loader runs in `u:r:ksu:s0`. The E1S pair is tied to the S921B DZE1 release,
