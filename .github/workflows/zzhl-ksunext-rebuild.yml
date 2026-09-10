@@ -195,7 +195,7 @@ jobs:
 
           daemon = Path(sys.argv[1]).read_bytes()
           expected = hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest()
-          if daemon[:6] != b"\\x7fELF\\x02\\x01":
+          if daemon[:6] != b"\x7fELF\x02\x01":
               raise SystemExit("daemon is not ELF64")
           shoff = struct.unpack_from("<Q", daemon, 40)[0]
           entsize, count, names_index = struct.unpack_from("<HHH", daemon, 58)
@@ -204,7 +204,7 @@ jobs:
           names_header = headers[names_index]
           names = daemon[names_header[4]:names_header[4] + names_header[5]]
           rodata = next(h for h in headers
-                        if names[h[0]:].split(b"\\0", 1)[0] == b".rodata")
+          if names[h[0]:].split(b"\0", 1)[0] == b".rodata")
           start, end = rodata[4], rodata[4] + rodata[5]
           found = []
           offset = start
@@ -217,7 +217,7 @@ jobs:
               except zlib.error:
                   offset += 1
                   continue
-              if not probe.startswith(b"\\x7fELF\\x02\\x01"):
+              if not probe.startswith(b"\x7fELF\x02\x01"):
                   offset += 1
                   continue
               decoder = zlib.decompressobj(-15)
@@ -258,3 +258,23 @@ jobs:
           module="out/$MODULE_NAME"
           old_daemon=kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-regular-module-previous
           old_module=kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-regular-previous.ko
+          if [[ ! -e "$old_daemon" ]]; then
+            install -m 0755 kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 "$old_daemon"
+          fi
+          if [[ ! -e "$old_module" ]]; then
+            install -m 0644 kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko "$old_module"
+          fi
+          install -m 0755 "$daemon" kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0
+          install -m 0644 "$module" kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko
+          sha256sum \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
+            kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
+            "$old_daemon" "$old_module"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
+            kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
+            "$old_daemon" "$old_module"
+          git commit -m "Rebuild ZZHL KernelSU Next kernel pair"
+          git push origin HEAD:main
