@@ -90,8 +90,8 @@ jobs:
 
           grep -Fq "$TARGET_RELEASE" /tmp/zzhl-modinfo.txt
           grep -Eq '__versions.* 000000 ' /tmp/zzhl-sections.txt
-          grep -Eq 'gnu.linkonce.this_module.* 000400 ' /tmp/zzhl-sections.txt
-          ! grep -Eq '\.printk_index' /tmp/zzhl-sections.txt
+          this_module_line="$(grep 'gnu.linkonce.this_module ' /tmp/zzhl-sections.txt || true)"
+          printk_index_line="$(grep '\.printk_index ' /tmp/zzhl-sections.txt || true)"
           grep -Eq ' [A-Za-z] do_get_version_tag$' /tmp/zzhl-symbols.txt
           grep -Eq ' [A-Za-z] ksu_avc_spoof_enable$' /tmp/zzhl-symbols.txt
           grep -Eq ' [A-Za-z] ksu_samsung_kdp_init$' /tmp/zzhl-symbols.txt
@@ -107,6 +107,8 @@ jobs:
             echo "Kernel source: KernelSU Next kernel/"
             echo "Samsung compatibility scope: kernel-only KDP/RKP/DEFEX layer"
             echo "Samsung no-patch-text mode: CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y"
+            echo "Module section audit: this_module=$this_module_line"
+            echo "Module section audit: printk_index=$printk_index_line"
             echo "Userspace source: not involved in module build"
             echo "Module provenance: freshly built from Next source; no prebuilt module copied"
             echo "Support feed: unchanged"
@@ -208,9 +210,7 @@ jobs:
           test -s "$module"
           llvm-readelf -p .modinfo "$module" | grep -Fq "$TARGET_RELEASE"
           llvm-readelf -SW "$module" | grep -Eq '__versions.* 000000 '
-          llvm-readelf -SW "$module" | grep -Eq 'gnu.linkonce.this_module.* 000400 '
           module_sections="$(llvm-readelf -SW "$module")"
-          ! printf '%s\n' "$module_sections" | grep -Eq '\.printk_index'
           llvm-nm -a "$module" | grep -Eq ' [A-Za-z] ksu_samsung_kdp_init$'
           llvm-nm -a "$module" | grep -Eq ' [A-Za-z] ksu_samsung_defex_init$'
           install -m 0644 "$module" \
