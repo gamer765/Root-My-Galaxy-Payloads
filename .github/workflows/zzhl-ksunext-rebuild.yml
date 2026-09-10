@@ -161,8 +161,15 @@ jobs:
           git -C "$KSU_ROOT" checkout --detach "$KSU_COMMIT"
           test "$(git -C "$KSU_ROOT" rev-parse HEAD)" = "$KSU_COMMIT"
 
-          # This is a build-metadata-only adjustment to Next build.rs. It does
-          # not alter ksud late-load, staging, installation, or control logic.
+          # Apply the Next userspace portion of the S928 compatibility patch.
+          # This keeps late-load synchronous: the staged daemon is moved into
+          # /data/adb/ksud before module loading changes this process context.
+          git -C "$KSU_ROOT" apply --whitespace=nowarn \
+            --include='userspace/ksud/src/late_load.rs' \
+            --include='userspace/ksud/src/utils.rs' \
+            "$GITHUB_WORKSPACE/kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
+
+          # This is a build-metadata-only adjustment to Next build.rs.
           python3 - "$KSU_ROOT/userspace/ksud/build.rs" <<'PY'
           from pathlib import Path
           import sys
@@ -199,8 +206,9 @@ jobs:
           path.write_text(source)
           PY
 
-          changed="$(git -C "$KSU_ROOT" status --porcelain | sed -E 's/^.. //')"
-          test "$changed" = "userspace/ksud/build.rs"
+          changed="$(git -C "$KSU_ROOT" status --porcelain | sed -E 's/^.. //' | sort)"
+          expected_changes=$'userspace/ksud/build.rs\nuserspace/ksud/src/late_load.rs\nuserspace/ksud/src/utils.rs'
+          test "$changed" = "$expected_changes"
 
       - name: Verify and embed freshly built Next module
         run: |
@@ -245,6 +253,12 @@ jobs:
           strings "$daemon" | grep -Fq 'KernelSU Next'
           strings "$daemon" | grep -Fq 'com.rifsxd.ksunext'
           strings "$daemon" | grep -Fq '332143.3.0'
+          strings "$daemon" | grep -Fq 'Failed to stage ksud'
+          strings "$daemon" | grep -Fq 'Failed to finish ksud installation'
+          if strings "$daemon" | grep -Fq 'Restarting KernelSU Next Manager'; then
+            echo "daemon still contains the old asynchronous late-load restart path"
+            exit 1
+          fi
           if strings "$daemon" | grep -Eiq 'KernelSU-v3\.2\.5|3\.2\.5|legacy-s928|regular-module'; then
             echo "daemon contains forbidden non-Next lineage marker"
             exit 1
@@ -318,7 +332,7 @@ jobs:
             echo "Target release: $TARGET_RELEASE"
             echo "Target KMI: $TARGET_KMI"
             echo "Kernel compatibility scope: kernel-only Samsung KDP/RKP/DEFEX patch"
-            echo "Userspace scope: unmodified Next late-load/control logic"
+            echo "Userspace scope: exact Next late-load with synchronous S928 staging patch"
             echo "Userspace metadata scope: build.rs version override only"
             echo "Samsung patch file SHA-256: $patch_sha"
             echo "Support feed: enabled for exact SM-S928U1 + 6.1.162 automatic match"
