@@ -8,7 +8,7 @@ on:
       - "kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout payload repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Install host build dependencies
         run: sudo apt-get update && sudo apt-get install -y clang lld llvm
@@ -261,3 +263,22 @@ jobs:
         with:
           name: zzhl-ksud-ksun-3.3.0-sync
           path: dist/
+
+      - name: Publish candidate daemon and rollback copy
+        run: |
+          daemon=dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-sync
+          install -m 0755 "$daemon" \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0
+          git show HEAD^:kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 > \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-stock-previous
+          chmod 0755 kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-stock-previous
+          sha256sum \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-stock-previous
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-stock-previous
+          git commit -m "Publish synchronous KernelSU Next ZZHL daemon"
+          git push origin HEAD:main
