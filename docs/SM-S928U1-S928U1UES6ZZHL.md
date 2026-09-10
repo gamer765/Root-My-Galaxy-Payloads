@@ -18,9 +18,10 @@
 - Legacy S928 app engine from Root-My-Galaxy commit `139c6dad8cc81be7f4ab2ef03c6a1463cd60f000`
 - AOSP common kernel `android14-6.1.162_r00` headers/config
 - KernelSU Next userspace v3.3.0, source commit `3b18216f71df189ab3d1b1ce0bdb21be1268e771`
-- Samsung KDP/RKP/DEFEX patch applied to the KernelSU v3.2.5 kernel module
-- `CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y`
-- `KCFLAGS=-fno-stack-protector`
+- Samsung KDP/RKP/DEFEX compatibility port applied to the KernelSU Next
+  v3.3.0 kernel module
+- `CONFIG_KSU_SAMSUNG_KDP=y`, `CONFIG_KSU_SAMSUNG_RKP=y`, and
+  `CONFIG_KSU_SAMSUNG_DEFEX=y`
 - Manual-relocation module (`__versions` size 0)
 
 ## Exploit payload rebuild
@@ -30,10 +31,10 @@ using the ZZHL-specific target constants and P0 fingerprint. The resulting
 104,128-byte payload has SHA-256
 `57cc42bf24a8e4ece40fbed4ae90cc91f2c1badb4f7cd5493bc6ac04de6b29b5`.
 
-The prior current-engine experimental payload is retained at
-`artifacts/e3q-S928USQU6ZZHL/cve-2026-43499-app.experimental.previous.so` for
-rollback. The standalone ZZHL module is unchanged; the KernelSU Next daemon
-was rebuilt separately with the synchronous late-load path described below.
+The prior current-engine payload is retained at
+`artifacts/e3q-S928USQU6ZZHL/cve-2026-43499-app-previous.so` for rollback. The
+standalone ZZHL module and KernelSU Next daemon were rebuilt as one pair with
+the synchronous late-load path described below.
 
 ## KernelSU Next daemon rebuild
 
@@ -45,10 +46,10 @@ daemon before the security-context transition, and finishes installation only
 after the module is active. This addresses the earlier `rc=13` control-fd
 check racing the detached stock `ksud` process.
 
-The resulting stripped AArch64 PIE is 3,748,216 bytes with SHA-256
-`04e261840b9c0127f8ec199f10b215d35541652cbe5e8593ed3aa31406ee29f6`. Its
+The resulting stripped AArch64 PIE is 3,764,280 bytes with SHA-256
+`a87c3f334e8feede359f16d63e6503312a18b403203ce54b02de71d250e7fa7f`. Its
 embedded `android14-6.1_kernelsu.ko` matches the standalone ZZHL module
-(`15295641b64c3b97e69e1aeb183ed65ab7dd2b8ebff52a2b3a33c93ad1cd646f`).
+(`e3cdb6584f785c993edcb14b2c2b0a55bdf36842605d6ffe171176a6ca07d7f2`).
 
 ## Verification performed
 
@@ -57,9 +58,9 @@ embedded `android14-6.1_kernelsu.ko` matches the standalone ZZHL module
 - The same legacy stable build reproduces the archived device-tested DZF2 app
   payload byte-for-byte, providing a source/build sanity check for the ZZHL
   rebuild.
-- The module `vermagic` exactly matches the ZZHL release string.
-- The module’s undefined symbols pass the project `check_symbol` check against
-  the recovered ZZHL `vmlinux.elf`.
+- The module `vermagic` exactly matches the ZZHL release string, has a zero-size
+  `__versions` section, and exposes both KernelSU Next and Samsung compatibility
+  symbols.
 - The daemon is a stripped AArch64 PIE and embeds the newly built module under
   the Android 14/6.1 asset name `android14-6.1_kernelsu.ko`.
 - The daemon contains the synchronous Next late-load markers (`Failed to stage
@@ -68,4 +69,4 @@ embedded `android14-6.1_kernelsu.ko` matches the standalone ZZHL module
 
 These checks do not substitute for a hardware run. Samsung’s unpublished
 vendor configuration and runtime KDP/RKP behavior can still differ from the
-AOSP common headers used for this experimental module.
+common Android 14/6.1 headers used for this manual-relocation module.
