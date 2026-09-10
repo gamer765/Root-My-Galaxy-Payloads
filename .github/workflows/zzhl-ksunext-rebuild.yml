@@ -1,0 +1,262 @@
+name: Rebuild ZZHL KernelSU Next pair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/zzhl-ksunext-rebuild.yml"
+      - "kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  KSU_COMMIT: 3b18216f71df189ab3d1b1ce0bdb21be1268e771
+  TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6ZZHL
+  TARGET_KMI: android14-6.1
+  MODULE_NAME: android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko
+
+jobs:
+  build-module:
+    name: Build the KernelSU Next ZZHL module
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
+      options: --privileged
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+
+      - name: Build module from exact KernelSU Next source
+        env:
+          KSU_ROOT: ${{ github.workspace }}/ksunext
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git "$KSU_ROOT"
+          git -C "$KSU_ROOT" checkout "$KSU_COMMIT"
+          git -C "$KSU_ROOT" apply --whitespace=nowarn \
+            "$GITHUB_WORKSPACE/kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
+
+          cd "$KSU_ROOT/kernel"
+          test -n "${KDIR:-}"
+          sed -i "s/6\\.1\\.166-dirty/$TARGET_RELEASE/g" \
+            "$KDIR/include/generated/utsrelease.h" \
+            "$KDIR/include/config/kernel.release"
+          grep -q "$TARGET_RELEASE" "$KDIR/include/generated/utsrelease.h"
+          grep -q "$TARGET_RELEASE" "$KDIR/include/config/kernel.release"
+
+          CONFIG_KSU=m \
+          CONFIG_KSU_SAMSUNG_KDP=y \
+          CONFIG_KSU_SAMSUNG_RKP=y \
+          CONFIG_KSU_SAMSUNG_DEFEX=y \
+          CC=clang make -j"$(nproc)"
+
+          test -s kernelsu.ko
+          llvm-strip -d kernelsu.ko
+          llvm-readelf -p .modinfo kernelsu.ko | grep -Fq "$TARGET_RELEASE"
+          llvm-readelf -SW kernelsu.ko | grep -Eq '__versions.* 000000 '
+          llvm-nm -a kernelsu.ko | grep -Eq ' do_get_version_tag$'
+          llvm-nm -a kernelsu.ko | grep -Eq ' ksu_avc_spoof_enable$'
+          llvm-nm -a kernelsu.ko | grep -Eq ' ksu_samsung_kdp_init$'
+
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          install -m 0644 kernelsu.ko "$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          sha256sum "$GITHUB_WORKSPACE/out/$MODULE_NAME" > "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
+          {
+            echo "KernelSU Next commit: $KSU_COMMIT"
+            echo "Target release: $TARGET_RELEASE"
+            echo "Target KMI: $TARGET_KMI"
+            echo "Samsung configs: CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y"
+            cat "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
+          } > "$GITHUB_WORKSPACE/out/MODULE-BUILD-REPORT.txt"
+
+      - name: Upload corrected KernelSU Next module
+        uses: actions/upload-artifact@v4
+        with:
+          name: zzhl-kernelsu-next-module
+          path: out/
+
+  build-daemon:
+    name: Embed the corrected module in ksud
+    needs: build-module
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Download corrected module
+        uses: actions/download-artifact@v4
+        with:
+          name: zzhl-kernelsu-next-module
+          path: out
+
+      - name: Install host build dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang lld llvm
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK r29
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;29.0.14206865"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Fetch exact KernelSU Next source
+        env:
+          KSU_ROOT: ${{ runner.temp }}/ksunext
+        run: |
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git "$KSU_ROOT"
+          git -C "$KSU_ROOT" checkout "$KSU_COMMIT"
+          git -C "$KSU_ROOT" apply --whitespace=nowarn \
+            "$GITHUB_WORKSPACE/kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
+
+      - name: Verify and embed the corrected module
+        env:
+          KSU_ROOT: ${{ runner.temp }}/ksunext
+        run: |
+          set -euo pipefail
+          module="$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          test -s "$module"
+          llvm-readelf -p .modinfo "$module" | grep -Fq "$TARGET_RELEASE"
+          llvm-readelf -SW "$module" | grep -Eq '__versions.* 000000 '
+          llvm-nm -a "$module" | grep -Eq ' do_get_version_tag$'
+          llvm-nm -a "$module" | grep -Eq ' ksu_avc_spoof_enable$'
+          llvm-nm -a "$module" | grep -Eq ' ksu_samsung_kdp_init$'
+          install -m 0644 "$module" \
+            "$KSU_ROOT/userspace/ksud/bin/aarch64/android14-6.1_kernelsu.ko"
+
+      - name: Build KernelSU Next 3.3.0 daemon
+        env:
+          KSU_ROOT: ${{ runner.temp }}/ksunext
+          KSU_BUILD_VERSION_CODE: "33214"
+          KSU_BUILD_VERSION_NAME: "3.3.0"
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export PATH="$NDK/bin:$PATH"
+          export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$NDK/sysroot -I$NDK/sysroot/usr/include/aarch64-linux-android -I$NDK/sysroot/usr/include"
+          export CC_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang"
+          export CXX_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang++"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK/bin/aarch64-linux-android35-clang"
+          cargo build --locked --target aarch64-linux-android --release \
+            --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
+          mkdir -p dist
+          cp "$KSU_ROOT/userspace/ksud/target/aarch64-linux-android/release/ksud" \
+            dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-next-kernel
+
+      - name: Verify daemon and embedded module provenance
+        env:
+          KSU_ROOT: ${{ runner.temp }}/ksunext
+        run: |
+          set -euo pipefail
+          daemon=dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-next-kernel
+          module="$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          file "$daemon"
+          test "$(stat -c %s "$daemon")" -gt 3000000
+          strings "$daemon" | grep -Fq 'KernelSU Next'
+          strings "$daemon" | grep -Fq 'com.rifsxd.ksunext'
+          strings "$daemon" | grep -Fq 'Failed to stage ksud'
+          strings "$daemon" | grep -Fq 'Failed to finish ksud installation'
+          strings "$daemon" | grep -Fq '332143.3.0'
+          python3 - "$daemon" "$module" <<'PY'
+          import hashlib
+          import struct
+          import sys
+          import zlib
+          from pathlib import Path
+
+          daemon = Path(sys.argv[1]).read_bytes()
+          expected = hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest()
+          if daemon[:6] != b"\\x7fELF\\x02\\x01":
+              raise SystemExit("daemon is not ELF64")
+          shoff = struct.unpack_from("<Q", daemon, 40)[0]
+          entsize, count, names_index = struct.unpack_from("<HHH", daemon, 58)
+          headers = [struct.unpack_from("<IIQQQQIIQQ", daemon, shoff + i * entsize)
+                     for i in range(count)]
+          names_header = headers[names_index]
+          names = daemon[names_header[4]:names_header[4] + names_header[5]]
+          rodata = next(h for h in headers
+                        if names[h[0]:].split(b"\\0", 1)[0] == b".rodata")
+          start, end = rodata[4], rodata[4] + rodata[5]
+          found = []
+          offset = start
+          while offset < end:
+              if (daemon[offset] >> 1) & 3 == 3:
+                  offset += 1
+                  continue
+              try:
+                  probe = zlib.decompressobj(-15).decompress(daemon[offset:offset + 256], 16)
+              except zlib.error:
+                  offset += 1
+                  continue
+              if not probe.startswith(b"\\x7fELF\\x02\\x01"):
+                  offset += 1
+                  continue
+              decoder = zlib.decompressobj(-15)
+              try:
+                  asset = decoder.decompress(daemon[offset:end], 32 * 1024 * 1024)
+              except zlib.error:
+                  offset += 1
+                  continue
+              if not decoder.eof:
+                  offset += 1
+                  continue
+              consumed = end - offset - len(decoder.unused_data)
+              elf_type = struct.unpack_from("<H", asset, 16)[0]
+              if elf_type == 1:
+                  found.append(hashlib.sha256(asset).hexdigest())
+              offset += consumed
+          if found != [expected]:
+              raise SystemExit(f"embedded module mismatch: {found!r} != {[expected]!r}")
+          print(f"embedded Next module matches {expected}")
+          PY
+          sha256sum "$daemon" "$module" > dist/SHA256SUMS
+          {
+            echo "KernelSU Next commit: $KSU_COMMIT"
+            echo "Samsung compatibility patch: $(sha256sum kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch | cut -d' ' -f1)"
+            cat dist/SHA256SUMS
+          } > dist/BUILD-REPORT.txt
+
+      - name: Upload corrected pair
+        uses: actions/upload-artifact@v4
+        with:
+          name: zzhl-kernelsu-next-pair
+          path: dist/
+
+      - name: Publish corrected pair and rollback copies
+        run: |
+          set -euo pipefail
+          daemon=dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-next-kernel
+          module="out/$MODULE_NAME"
+          old_daemon=kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-regular-module-previous
+          old_module=kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-regular-previous.ko
+          if [[ ! -e "$old_daemon" ]]; then
+            install -m 0755 kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 "$old_daemon"
+          fi
+          if [[ ! -e "$old_module" ]]; then
+            install -m 0644 kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko "$old_module"
+          fi
+          install -m 0755 "$daemon" kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0
+          install -m 0644 "$module" kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko
+          sha256sum \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
+            kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
+            "$old_daemon" "$old_module"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
+            kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
+            "$old_daemon" "$old_module"
+          git commit -m "Rebuild ZZHL KernelSU Next kernel pair"
+          git push origin HEAD:main
