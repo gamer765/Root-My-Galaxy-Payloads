@@ -35,6 +35,7 @@ jobs:
           set -euo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git clone https://github.com/KernelSU-Next/KernelSU-Next.git "$KSU_ROOT"
+          git config --global --add safe.directory "$KSU_ROOT"
           git -C "$KSU_ROOT" checkout "$KSU_COMMIT"
           git -C "$KSU_ROOT" apply --whitespace=nowarn \
             "$GITHUB_WORKSPACE/kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
@@ -51,7 +52,8 @@ jobs:
           CONFIG_KSU_SAMSUNG_KDP=y \
           CONFIG_KSU_SAMSUNG_RKP=y \
           CONFIG_KSU_SAMSUNG_DEFEX=y \
-          CC=clang make -j"$(nproc)"
+          CC=clang make -C "$KDIR" \
+            M="$KSU_ROOT/kernel" src="$KSU_ROOT/kernel" modules -j"$(nproc)"
 
           test -s kernelsu.ko
           llvm-strip -d kernelsu.ko
