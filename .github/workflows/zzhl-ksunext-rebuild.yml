@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/zzhl-ksunext-rebuild.yml"
       - "kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
+      - "kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-legacy-s928.ko"
   workflow_dispatch:
 
 permissions:
@@ -16,74 +17,46 @@ env:
   TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6ZZHL
   TARGET_KMI: android14-6.1
   MODULE_NAME: android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko
+  LEGACY_MODULE_SOURCE: kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-legacy-s928.ko
 
 jobs:
   build-module:
-    name: Build the KernelSU Next ZZHL module
+    name: Prepare the legacy S928 KernelSU Next module
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
-      options: --privileged
     steps:
       - name: Checkout payload repository
         uses: actions/checkout@v4
 
-      - name: Build module from exact KernelSU Next source
-        env:
-          KSU_ROOT: ${{ github.workspace }}/ksunext
+      - name: Install ELF inspection tools
+        run: sudo apt-get update && sudo apt-get install -y llvm
+
+      - name: Validate legacy S928 module baseline
         run: |
           set -euo pipefail
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git clone https://github.com/KernelSU-Next/KernelSU-Next.git "$KSU_ROOT"
-          git config --global --add safe.directory "$KSU_ROOT"
-          git -C "$KSU_ROOT" checkout "$KSU_COMMIT"
-          git -C "$KSU_ROOT" apply --whitespace=nowarn \
-            "$GITHUB_WORKSPACE/kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
-
-          cd "$KSU_ROOT/kernel"
-          test -n "${KDIR:-}"
-          sed -i "s/6\\.1\\.166-dirty/$TARGET_RELEASE/g" \
-            "$KDIR/include/generated/utsrelease.h" \
-            "$KDIR/include/config/kernel.release"
-          grep -q "$TARGET_RELEASE" "$KDIR/include/generated/utsrelease.h"
-          grep -q "$TARGET_RELEASE" "$KDIR/include/config/kernel.release"
-
-          set +e
-          CONFIG_KSU=m \
-          CONFIG_KSU_SAMSUNG_KDP=y \
-          CONFIG_KSU_SAMSUNG_RKP=y \
-          CONFIG_KSU_SAMSUNG_DEFEX=y \
-          SKIP_BTF=1 \
-          CC=clang make -C "$KDIR" \
-            M="$KSU_ROOT/kernel" src="$KSU_ROOT/kernel" modules -j"$(nproc)"
-          build_rc=$?
-          set -e
-          # This DDK's optional BTF post-step returns EX_IOERR (74) after
-          # writing a valid module. The manual loader does not consume BTF;
-          # all module invariants are checked below.
-          if [ "$build_rc" -ne 0 ] && [ "$build_rc" -ne 74 ]; then
-            exit "$build_rc"
-          fi
-
-          test -s kernelsu.ko
-          llvm-strip -d kernelsu.ko
-          llvm-readelf -p .modinfo kernelsu.ko > /tmp/zzhl-modinfo.txt
-          llvm-readelf -SW kernelsu.ko > /tmp/zzhl-sections.txt
-          llvm-nm -a kernelsu.ko > /tmp/zzhl-symbols.txt
+          test -s "$LEGACY_MODULE_SOURCE"
+          test "$(stat -c %s "$LEGACY_MODULE_SOURCE")" -eq 311160
+          llvm-readelf -p .modinfo "$LEGACY_MODULE_SOURCE" > /tmp/zzhl-modinfo.txt
+          llvm-readelf -SW "$LEGACY_MODULE_SOURCE" > /tmp/zzhl-sections.txt
+          llvm-nm -a "$LEGACY_MODULE_SOURCE" > /tmp/zzhl-symbols.txt
           grep -Fq "$TARGET_RELEASE" /tmp/zzhl-modinfo.txt
           grep -Eq '__versions.* 000000 ' /tmp/zzhl-sections.txt
+          grep -Eq 'gnu.linkonce.this_module.* 000400 ' /tmp/zzhl-sections.txt
+          ! grep -Eq '\.printk_index' /tmp/zzhl-sections.txt
           grep -Eq ' do_get_version_tag$' /tmp/zzhl-symbols.txt
           grep -Eq ' ksu_avc_spoof_enable$' /tmp/zzhl-symbols.txt
           grep -Eq ' ksu_samsung_kdp_init$' /tmp/zzhl-symbols.txt
 
           mkdir -p "$GITHUB_WORKSPACE/out"
-          install -m 0644 kernelsu.ko "$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          install -m 0644 "$LEGACY_MODULE_SOURCE" "$GITHUB_WORKSPACE/out/$MODULE_NAME"
           sha256sum "$GITHUB_WORKSPACE/out/$MODULE_NAME" > "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
           {
             echo "KernelSU Next commit: $KSU_COMMIT"
             echo "Target release: $TARGET_RELEASE"
             echo "Target KMI: $TARGET_KMI"
-            echo "Samsung configs: CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y"
+            echo "Module lineage: legacy S928 DZG1 KernelSU Next module shape"
+            echo "Module baseline SHA-256: c309db04342040106fece2255742d365e095e2210b5f31b6644530b2b715f2ba"
+            echo "Retarget operation: same-length vermagic replacement to ZZHL"
+            echo "Legacy module invariants: this_module=0x400, __versions=0, no .printk_index"
             cat "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
           } > "$GITHUB_WORKSPACE/out/MODULE-BUILD-REPORT.txt"
 
@@ -147,6 +120,8 @@ jobs:
           llvm-nm -a "$module" > /tmp/zzhl-symbols.txt
           grep -Fq "$TARGET_RELEASE" /tmp/zzhl-modinfo.txt
           grep -Eq '__versions.* 000000 ' /tmp/zzhl-sections.txt
+          grep -Eq 'gnu.linkonce.this_module.* 000400 ' /tmp/zzhl-sections.txt
+          ! grep -Eq '\.printk_index' /tmp/zzhl-sections.txt
           grep -Eq ' do_get_version_tag$' /tmp/zzhl-symbols.txt
           grep -Eq ' ksu_avc_spoof_enable$' /tmp/zzhl-symbols.txt
           grep -Eq ' ksu_samsung_kdp_init$' /tmp/zzhl-symbols.txt
@@ -170,14 +145,14 @@ jobs:
             --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
           mkdir -p dist
           cp "$KSU_ROOT/userspace/ksud/target/aarch64-linux-android/release/ksud" \
-            dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-next-kernel
+            dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-legacy-s928
 
       - name: Verify daemon and embedded module provenance
         env:
           KSU_ROOT: ${{ runner.temp }}/ksunext
         run: |
           set -euo pipefail
-          daemon=dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-next-kernel
+          daemon=dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-legacy-s928
           module="$GITHUB_WORKSPACE/out/$MODULE_NAME"
           file "$daemon"
           test "$(stat -c %s "$daemon")" -gt 3000000
@@ -242,6 +217,9 @@ jobs:
           {
             echo "KernelSU Next commit: $KSU_COMMIT"
             echo "Samsung compatibility patch: $(sha256sum kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch | cut -d' ' -f1)"
+            echo "Module lineage: legacy S928 DZG1 KernelSU Next module shape"
+            echo "Module baseline SHA-256: c309db04342040106fece2255742d365e095e2210b5f31b6644530b2b715f2ba"
+            echo "Retarget operation: same-length vermagic replacement to ZZHL"
             cat dist/SHA256SUMS
           } > dist/BUILD-REPORT.txt
 
@@ -254,18 +232,41 @@ jobs:
       - name: Publish corrected pair and rollback copies
         run: |
           set -euo pipefail
-          daemon=dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-next-kernel
+          daemon=dist/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-legacy-s928
           module="out/$MODULE_NAME"
           old_daemon=kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-regular-module-previous
           old_module=kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-regular-previous.ko
+          generic_daemon=kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-generic-ddk-previous
+          generic_module=kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-generic-ddk-previous.ko
           if [[ ! -e "$old_daemon" ]]; then
             install -m 0755 kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 "$old_daemon"
           fi
           if [[ ! -e "$old_module" ]]; then
             install -m 0644 kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko "$old_module"
           fi
+          if [[ ! -e "$generic_daemon" ]]; then
+            install -m 0755 kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 "$generic_daemon"
+          fi
+          if [[ ! -e "$generic_module" ]]; then
+            install -m 0644 kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko "$generic_module"
+          fi
           install -m 0755 "$daemon" kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0
           install -m 0644 "$module" kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko
+          daemon_size=$(stat -c %s kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0)
+          python3 - "$daemon_size" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          path = Path("support/targets-v3.json")
+          text = path.read_text()
+          size = sys.argv[1]
+          pattern = r'("payloadId": "e3q-S928USQU6ZZHL".*?"kernelsu": \{\s*"url": "[^"]+",\s*"size": )\d+'
+          updated, count = re.subn(pattern, r'\g<1>' + size, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit("ZZHL support-feed entry not found")
+          path.write_text(updated)
+          PY
           sha256sum \
             kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
             kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
@@ -275,6 +276,8 @@ jobs:
           git add \
             kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
             kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
-            "$old_daemon" "$old_module"
-          git commit -m "Rebuild ZZHL KernelSU Next kernel pair"
+            "$old_daemon" "$old_module" \
+            "$generic_daemon" "$generic_module" \
+            support/targets-v3.json
+          git commit -m "Rebuild ZZHL KernelSU Next pair with legacy S928 module"
           git push origin HEAD:main
