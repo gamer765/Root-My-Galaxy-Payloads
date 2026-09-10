@@ -67,11 +67,14 @@ jobs:
 
           test -s kernelsu.ko
           llvm-strip -d kernelsu.ko
-          llvm-readelf -p .modinfo kernelsu.ko | grep -Fq "$TARGET_RELEASE"
-          llvm-readelf -SW kernelsu.ko | grep -Eq '__versions.* 000000 '
-          llvm-nm -a kernelsu.ko | grep -Eq ' do_get_version_tag$'
-          llvm-nm -a kernelsu.ko | grep -Eq ' ksu_avc_spoof_enable$'
-          llvm-nm -a kernelsu.ko | grep -Eq ' ksu_samsung_kdp_init$'
+          llvm-readelf -p .modinfo kernelsu.ko > /tmp/zzhl-modinfo.txt
+          llvm-readelf -SW kernelsu.ko > /tmp/zzhl-sections.txt
+          llvm-nm -a kernelsu.ko > /tmp/zzhl-symbols.txt
+          grep -Fq "$TARGET_RELEASE" /tmp/zzhl-modinfo.txt
+          grep -Eq '__versions.* 000000 ' /tmp/zzhl-sections.txt
+          grep -Eq ' do_get_version_tag$' /tmp/zzhl-symbols.txt
+          grep -Eq ' ksu_avc_spoof_enable$' /tmp/zzhl-symbols.txt
+          grep -Eq ' ksu_samsung_kdp_init$' /tmp/zzhl-symbols.txt
 
           mkdir -p "$GITHUB_WORKSPACE/out"
           install -m 0644 kernelsu.ko "$GITHUB_WORKSPACE/out/$MODULE_NAME"
@@ -139,11 +142,14 @@ jobs:
           set -euo pipefail
           module="$GITHUB_WORKSPACE/out/$MODULE_NAME"
           test -s "$module"
-          llvm-readelf -p .modinfo "$module" | grep -Fq "$TARGET_RELEASE"
-          llvm-readelf -SW "$module" | grep -Eq '__versions.* 000000 '
-          llvm-nm -a "$module" | grep -Eq ' do_get_version_tag$'
-          llvm-nm -a "$module" | grep -Eq ' ksu_avc_spoof_enable$'
-          llvm-nm -a "$module" | grep -Eq ' ksu_samsung_kdp_init$'
+          llvm-readelf -p .modinfo "$module" > /tmp/zzhl-modinfo.txt
+          llvm-readelf -SW "$module" > /tmp/zzhl-sections.txt
+          llvm-nm -a "$module" > /tmp/zzhl-symbols.txt
+          grep -Fq "$TARGET_RELEASE" /tmp/zzhl-modinfo.txt
+          grep -Eq '__versions.* 000000 ' /tmp/zzhl-sections.txt
+          grep -Eq ' do_get_version_tag$' /tmp/zzhl-symbols.txt
+          grep -Eq ' ksu_avc_spoof_enable$' /tmp/zzhl-symbols.txt
+          grep -Eq ' ksu_samsung_kdp_init$' /tmp/zzhl-symbols.txt
           install -m 0644 "$module" \
             "$KSU_ROOT/userspace/ksud/bin/aarch64/android14-6.1_kernelsu.ko"
 
@@ -252,23 +258,3 @@ jobs:
           module="out/$MODULE_NAME"
           old_daemon=kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-regular-module-previous
           old_module=kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-regular-previous.ko
-          if [[ ! -e "$old_daemon" ]]; then
-            install -m 0755 kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 "$old_daemon"
-          fi
-          if [[ ! -e "$old_module" ]]; then
-            install -m 0644 kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko "$old_module"
-          fi
-          install -m 0755 "$daemon" kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0
-          install -m 0644 "$module" kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko
-          sha256sum \
-            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
-            kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
-            "$old_daemon" "$old_module"
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add \
-            kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0 \
-            kernelsu/android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko \
-            "$old_daemon" "$old_module"
-          git commit -m "Rebuild ZZHL KernelSU Next kernel pair"
-          git push origin HEAD:main
