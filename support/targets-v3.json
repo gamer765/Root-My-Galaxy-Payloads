@@ -196,7 +196,7 @@
     },
     {
       "payloadId": "e3q-S928USQU6ZZHL",
-      "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZHL Android 17 beta | legacy S928 app | Kernel 6.1.162 | KernelSU Next 3.3.0 | experimental",
+      "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZHL | Kernel 6.1.162 | KernelSU Next 3.3.0",
       "models": [
         "SM-S928U1"
       ],
@@ -209,7 +209,7 @@
       },
       "kernelsu": {
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0",
-        "size": 3748216
+        "size": 3764280
       }
     },
     {
