@@ -4,6 +4,21 @@ The files in this directory are built from KernelSU `v3.2.5`, commit
 `b0bc817b4e966aa6aa830834eaf6ef765d821d40`. They are not interchangeable
 between KMIs.
 
+## KernelSU Next 3.3.0 S928 builds
+
+The `ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0` artifact is a separate
+KernelSU Next userspace build, not the regular KernelSU v3.2.5 userspace
+listed below. It is built from Next source commit
+`3b18216f71df189ab3d1b1ce0bdb21be1268e771`, with the Samsung synchronous
+late-load/staging patch and the ZZHL-specific module embedded. The published
+daemon is 3,748,216 bytes with SHA-256
+`04e261840b9c0127f8ec199f10b215d35541652cbe5e8593ed3aa31406ee29f6`.
+
+The previous stock-late-load daemon is retained as
+`ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-stock-previous` for rollback. The
+standalone `.ko` remains an audit/debug copy; the app consumes the module
+embedded in the target-specific Next daemon.
+
 ## Versioned artifacts
 
 | File | Target | KMI | Purpose |
