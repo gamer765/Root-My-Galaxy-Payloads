@@ -15,6 +15,7 @@
 ## Build inputs
 
 - Android NDK r29 (Clang 21.0.0)
+- Legacy S928 app engine from Root-My-Galaxy commit `139c6dad8cc81be7f4ab2ef03c6a1463cd60f000`
 - AOSP common kernel `android14-6.1.162_r00` headers/config
 - KernelSU Next userspace v3.3.0, source commit `3b18216f71df189ab3d1b1ce0bdb21be1268e771`
 - Samsung KDP/RKP/DEFEX patch applied to the KernelSU v3.2.5 kernel module
@@ -22,10 +23,24 @@
 - `KCFLAGS=-fno-stack-protector`
 - Manual-relocation module (`__versions` size 0)
 
+## Exploit payload rebuild
+
+The ZZHL app payload was rebuilt with the legacy S928 stable-race build path,
+using the ZZHL-specific target constants and P0 fingerprint. The resulting
+104,128-byte payload has SHA-256
+`57cc42bf24a8e4ece40fbed4ae90cc91f2c1badb4f7cd5493bc6ac04de6b29b5`.
+
+The prior current-engine experimental payload is retained at
+`artifacts/e3q-S928USQU6ZZHL/cve-2026-43499-app.experimental.previous.so` for
+rollback. The KernelSU Next daemon and module were not changed by this rebuild.
+
 ## Verification performed
 
-- The app payload builds as a stripped AArch64 shared object and is exactly
+- The rebuilt app payload is a stripped AArch64 shared object and is exactly
   104,128 bytes.
+- The same legacy stable build reproduces the archived device-tested DZF2 app
+  payload byte-for-byte, providing a source/build sanity check for the ZZHL
+  rebuild.
 - The module `vermagic` exactly matches the ZZHL release string.
 - The module’s undefined symbols pass the project `check_symbol` check against
   the recovered ZZHL `vmlinux.elf`.
