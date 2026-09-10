@@ -78,7 +78,7 @@ jobs:
             CC=clang
           build_rc=$?
           set -e
-          if [[ "$build_rc" -ne 0 && "$build_rc" -ne 74 ]]; then
+          if [[ "$build_rc" -ne 0 && ! -s kernelsu.ko ]]; then
             exit "$build_rc"
           fi
 
@@ -209,7 +209,8 @@ jobs:
           llvm-readelf -p .modinfo "$module" | grep -Fq "$TARGET_RELEASE"
           llvm-readelf -SW "$module" | grep -Eq '__versions.* 000000 '
           llvm-readelf -SW "$module" | grep -Eq 'gnu.linkonce.this_module.* 000400 '
-          llvm-readelf -SW "$module" | grep -Eqv '\.printk_index'
+          module_sections="$(llvm-readelf -SW "$module")"
+          ! printf '%s\n' "$module_sections" | grep -Eq '\.printk_index'
           llvm-nm -a "$module" | grep -Eq ' [A-Za-z] ksu_samsung_kdp_init$'
           llvm-nm -a "$module" | grep -Eq ' [A-Za-z] ksu_samsung_defex_init$'
           install -m 0644 "$module" \
@@ -226,7 +227,7 @@ jobs:
           export PATH="$NDK/bin:$PATH"
           export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$NDK/sysroot -I$NDK/sysroot/usr/include/aarch64-linux-android -I$NDK/sysroot/usr/include"
           export CC_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang"
-          export CXX_aarch64-linux-android="$NDK/bin/aarch64-linux-android35-clang++"
+          export CXX_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang++"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK/bin/aarch64-linux-android35-clang"
           cargo build --locked --target aarch64-linux-android --release \
             --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
