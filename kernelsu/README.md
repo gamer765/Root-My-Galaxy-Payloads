@@ -11,12 +11,16 @@ KernelSU Next userspace build, not the regular KernelSU v3.2.5 userspace
 listed below. It is built from Next source commit
 `3b18216f71df189ab3d1b1ce0bdb21be1268e771`, with the Samsung synchronous
 late-load/staging patch and the ZZHL-specific module embedded. The published
-daemon is 3,748,216 bytes with SHA-256
-`04e261840b9c0127f8ec199f10b215d35541652cbe5e8593ed3aa31406ee29f6`.
+late-load/staging patch and the matching ZZHL-specific Next module embedded.
+The published daemon is 3,764,280 bytes with SHA-256
+`a87c3f334e8feede359f16d63e6503312a18b403203ce54b02de71d250e7fa7f`; the
+standalone module is 441,896 bytes with SHA-256
+`e3cdb6584f785c993edcb14b2c2b0a55bdf36842605d6ffe171176a6ca07d7f2`.
 
-The previous stock-late-load daemon is retained as
-`ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-stock-previous` for rollback. The
-standalone `.ko` remains an audit/debug copy; the app consumes the module
+The previous daemon paired with the regular KernelSU module is retained as
+`ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0-regular-module-previous` for rollback,
+along with `android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp-regular-previous.ko`.
+The standalone `.ko` remains an audit/debug copy; the app consumes the module
 embedded in the target-specific Next daemon.
 
 ## Versioned artifacts
@@ -31,6 +35,8 @@ embedded in the target-specific Next daemon.
 | `ksud-A366WVLS3AYG1-kdp` | Same exact A36 build | `android15-6.6` | Device-tested late-load binary embedding the exact A36 no-patch-text module |
 | `android14-6.1_kernelsu-e3q-S928USQS6DZF2-kdp.ko` | `SM-S928U/SM-S928U1`, `S928USQS6DZF2` | `android14-6.1` | Exact E3Q module with target `vermagic`, audited for manual relocation |
 | `ksud-e3q-S928USQS6DZF2-kdp` | Same exact E3Q build | `android14-6.1` | Device-tested late-load binary embedding the E3Q module |
+| `android14-6.1_kernelsu-e3q-S928USQU6ZZHL-kdp.ko` | `SM-S928U1`, `S928USQU6ZZHL` | `android14-6.1` | KernelSU Next 3.3.0 Samsung KDP/RKP/DEFEX module with target `vermagic`, audited for manual relocation |
+| `ksud-e3q-S928USQU6ZZHL-kdp-ksun-3.3.0` | Same exact ZZHL build | `android14-6.1` | KernelSU Next 3.3.0 late-load binary embedding the matching Next module |
 | `android14-6.1_kernelsu-e3q-S928BXXS6DZF2-kdp.ko` | `SM-S928B`, `S928BXXS6DZF2` | `android14-6.1` | Exact S928B no-patch-text module with target `vermagic`, audited for manual relocation |
 | `ksud-e3q-S928BXXS6DZF2-kdp` | Same exact S928B build | `android14-6.1` | Late-load binary embedding the S928B no-patch-text module; module-load hardware-tested |
 | `android14-6.1_kernelsu-e2s-S926BXXUEDZDR-kdp.ko` | `SM-S926B`, `S926BXXUEDZDR` | `android14-6.1` | Exact E2S no-patch-text module with target `vermagic`, audited for manual relocation |
@@ -66,6 +72,11 @@ Root Checker were then verified: Manager reported `Working <LKM> [Jailbreak
 mode]`, version `32525-2`, and one superuser, while Root Checker reported root
 access installed. The root remains per-boot because no boot image was
 modified; reboot survival is untested.
+The ZZHL pair is tied to the full `S928USQU6ZZHL` release string and uses the
+KernelSU Next 3.3.0 source tree with the Samsung compatibility port. Its module
+and daemon pass the static provenance checks and the daemon embeds the exact
+standalone module byte-for-byte; hardware validation of this corrected pair is
+still pending.
 The E2S pair is tied to the S926B DZDR release,
 static-audited, and device-tested: late-load reports version code `32525`, and
 the loader runs in `u:r:ksu:s0`. The E1S pair is tied to the S921B DZE1 release,
