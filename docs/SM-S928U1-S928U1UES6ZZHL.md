@@ -1,4 +1,4 @@
-# SM-S928U1 S928U1UES6ZZHL build report
+# SM-S928U1 S928USQU6ZZHL build report
 
 ## Target evidence
 
@@ -16,7 +16,9 @@
 
 - Android NDK r29 (Clang 21.0.0)
 - Legacy S928 app engine from Root-My-Galaxy commit `139c6dad8cc81be7f4ab2ef03c6a1463cd60f000`
-- AOSP common kernel `android14-6.1.162_r00` headers/config
+- Preserved legacy S928 DZG1 KernelSU Next module shape, retargeted to the
+  exact ZZHL release string; no complete ZZHL vendor source/vmlinux was
+  available for a source-identical module rebuild
 - KernelSU Next userspace v3.3.0, source commit `3b18216f71df189ab3d1b1ce0bdb21be1268e771`
 - Samsung KDP/RKP/DEFEX compatibility port applied to the KernelSU Next
   v3.3.0 kernel module
@@ -46,10 +48,12 @@ daemon before the security-context transition, and finishes installation only
 after the module is active. This addresses the earlier `rc=13` control-fd
 check racing the detached stock `ksud` process.
 
-The resulting stripped AArch64 PIE is 3,764,280 bytes with SHA-256
-`a87c3f334e8feede359f16d63e6503312a18b403203ce54b02de71d250e7fa7f`. Its
-embedded `android14-6.1_kernelsu.ko` matches the standalone ZZHL module
-(`e3cdb6584f785c993edcb14b2c2b0a55bdf36842605d6ffe171176a6ca07d7f2`).
+The daemon embeds the preserved stripped legacy S928 DZG1 KernelSU Next module
+shape after a same-length vermagic replacement to ZZHL. The resulting stripped
+AArch64 PIE is 3,727,928 bytes with SHA-256
+`556b8c3f0eabd1de73a7dba26187ebcbcb4d70b627981246ac3fcbdbf35c2487`. Its
+embedded `android14-6.1_kernelsu.ko` matches the standalone module
+(`39c87e32d5c083dc3043e324065aab6e535df5214e644823c89de1613e56f987`).
 
 ## Verification performed
 
@@ -58,8 +62,9 @@ embedded `android14-6.1_kernelsu.ko` matches the standalone ZZHL module
 - The same legacy stable build reproduces the archived device-tested DZF2 app
   payload byte-for-byte, providing a source/build sanity check for the ZZHL
   rebuild.
-- The module `vermagic` exactly matches the ZZHL release string, has a zero-size
-  `__versions` section, and exposes both KernelSU Next and Samsung compatibility
+- The legacy-shaped module `vermagic` exactly matches the ZZHL release string,
+  has a zero-size `__versions` section and `this_module=0x400`, has no
+  `.printk_index`, and exposes both KernelSU Next and Samsung compatibility
   symbols.
 - The daemon is a stripped AArch64 PIE and embeds the newly built module under
   the Android 14/6.1 asset name `android14-6.1_kernelsu.ko`.
@@ -67,6 +72,8 @@ embedded `android14-6.1_kernelsu.ko` matches the standalone ZZHL module
   ksud` and `Failed to finish ksud installation`) and explicit version
   metadata `33214` / `3.3.0`.
 
-These checks do not substitute for a hardware run. Samsung’s unpublished
-vendor configuration and runtime KDP/RKP behavior can still differ from the
-common Android 14/6.1 headers used for this manual-relocation module.
+These checks do not substitute for a hardware run. The active KO is a legacy
+S928 DZG1-shaped module with only a same-length release-string retarget; it is
+not a source-identical ZZHL vendor-module build. Samsung’s unpublished vendor
+configuration and runtime KDP/RKP behavior can still differ, so the pair must
+be hardware-retested before it is treated as validated.
