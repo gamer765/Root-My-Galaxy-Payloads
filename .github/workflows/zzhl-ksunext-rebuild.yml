@@ -48,6 +48,7 @@ jobs:
           grep -q "$TARGET_RELEASE" "$KDIR/include/generated/utsrelease.h"
           grep -q "$TARGET_RELEASE" "$KDIR/include/config/kernel.release"
 
+          set +e
           CONFIG_KSU=m \
           CONFIG_KSU_SAMSUNG_KDP=y \
           CONFIG_KSU_SAMSUNG_RKP=y \
@@ -55,6 +56,14 @@ jobs:
           SKIP_BTF=1 \
           CC=clang make -C "$KDIR" \
             M="$KSU_ROOT/kernel" src="$KSU_ROOT/kernel" modules -j"$(nproc)"
+          build_rc=$?
+          set -e
+          # This DDK's optional BTF post-step returns EX_IOERR (74) after
+          # writing a valid module. The manual loader does not consume BTF;
+          # all module invariants are checked below.
+          if [ "$build_rc" -ne 0 ] && [ "$build_rc" -ne 74 ]; then
+            exit "$build_rc"
+          fi
 
           test -s kernelsu.ko
           llvm-strip -d kernelsu.ko
