@@ -1,0 +1,350 @@
+name: Build offline Root My Galaxy APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/offline-apk.yml"
+      - "support/targets-v3.json"
+      - "artifacts/**"
+      - "kernelsu/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-offline-apk:
+    name: Build offline APK with bundled payloads
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+        with:
+          path: payloads
+
+      - name: Checkout upstream Root My Galaxy app
+        uses: actions/checkout@v4
+        with:
+          repository: BuSung-dev/Root-My-Galaxy
+          ref: main
+          path: appsrc
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build dependencies
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-37" \
+            "build-tools;37.0.0" \
+            "cmake;3.22.1" \
+            "ndk;28.2.13676358"
+
+      - name: Bundle current manifest payloads and patch app for offline mode
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import re
+          import shutil
+
+          root = pathlib.Path.cwd()
+          payload_repo = root / "payloads"
+          app = root / "appsrc"
+          manifest_path = payload_repo / "support" / "targets-v3.json"
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          if manifest.get("schemaVersion") != 3:
+              raise SystemExit("support/targets-v3.json is not schemaVersion 3")
+
+          prefix = "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/"
+          asset_root = app / "app" / "src" / "main" / "assets" / "offline"
+          (asset_root / "support").mkdir(parents=True, exist_ok=True)
+          shutil.copy2(manifest_path, asset_root / "support" / "targets-v3.json")
+
+          copied = {}
+          for profile in manifest["payloads"]:
+              for key in ("exploit", "kernelsu"):
+                  artifact = profile[key]
+                  url = artifact["url"]
+                  if not url.startswith(prefix):
+                      raise SystemExit(f"Refusing non-approved artifact URL: {url}")
+                  rel = url[len(prefix):]
+                  parts = pathlib.PurePosixPath(rel).parts
+                  if not rel or ".." in parts:
+                      raise SystemExit(f"Unsafe artifact path: {rel}")
+                  src = payload_repo / rel
+                  if not src.is_file():
+                      raise SystemExit(f"Manifest artifact is missing: {rel}")
+                  expected = int(artifact["size"])
+                  actual = src.stat().st_size
+                  if actual != expected:
+                      raise SystemExit(f"Size mismatch for {rel}: manifest={expected}, file={actual}")
+                  dst = asset_root / rel
+                  dst.parent.mkdir(parents=True, exist_ok=True)
+                  if rel not in copied:
+                      shutil.copy2(src, dst)
+                      copied[rel] = actual
+
+          build_info = {
+              "mode": "offline",
+              "payloadManifest": "support/targets-v3.json",
+              "artifactCount": len(copied),
+              "artifacts": copied,
+          }
+          (asset_root / "build-info.json").write_text(
+              json.dumps(build_info, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          # Give the offline fork its own application id so it can coexist with
+          # the upstream app even though this CI build uses a different signing key.
+          gradle = app / "app" / "build.gradle.kts"
+          text = gradle.read_text(encoding="utf-8")
+          text = re.sub(
+              r'applicationId\s*=\s*"dev\.busung\.s25uroot"',
+              'applicationId = "dev.busung.s25uroot.offline"',
+              text,
+              count=1,
+          )
+          text = re.sub(
+              r'versionName\s*=\s*"([^"]+)"',
+              lambda m: f'versionName = "{m.group(1)}-offline"',
+              text,
+              count=1,
+          )
+          if 'ndkVersion = "28.2.13676358"' not in text:
+              text = text.replace(
+                  "compileSdk = 37",
+                  'compileSdk = 37\n    ndkVersion = "28.2.13676358"',
+                  1,
+              )
+          gradle.write_text(text, encoding="utf-8")
+
+          # No direct network access at all in the offline fork.
+          android_manifest = app / "app" / "src" / "main" / "AndroidManifest.xml"
+          text = android_manifest.read_text(encoding="utf-8")
+          text = re.sub(
+              r'\s*<uses-permission android:name="android\.permission\.INTERNET"\s*/>\s*',
+              "\n",
+              text,
+              count=1,
+          )
+          android_manifest.write_text(text, encoding="utf-8")
+
+          # Make the English UI accurately describe the offline behavior.
+          strings = app / "app" / "src" / "main" / "res" / "values" / "strings.xml"
+          text = strings.read_text(encoding="utf-8")
+          replacements = {
+              '<string name="app_name">Root My Galaxy</string>': '<string name="app_name">Root My Galaxy Offline</string>',
+              'The app will verify the support profile, then download and run the exploit and KernelSU payload from GitHub.': 'The app will verify the support profile, then load and run the bundled offline exploit and KernelSU payload.',
+              '<string name="step_download_title">Download</string>': '<string name="step_download_title">Payloads</string>',
+              '<string name="step_download_detail">Load the support manifest</string>': '<string name="step_download_detail">Load bundled manifest and payloads</string>',
+              '<string name="phase_downloading">Downloading commit-pinned payloads from GitHub</string>': '<string name="phase_downloading">Loading bundled offline payloads</string>',
+              '<string name="status_checking_github">Checking GitHub support manifest</string>': '<string name="status_checking_github">Checking bundled support manifest</string>',
+              '<string name="status_downloading_payload">Downloading payloads</string>': '<string name="status_downloading_payload">Loading bundled payloads</string>',
+              '<string name="log_download_verified">[+] Payload download complete</string>': '<string name="log_download_verified">[+] Bundled payloads verified</string>',
+              '<string name="repo_downloading">Downloading %1$s</string>': '<string name="repo_downloading">Loading bundled %1$s</string>',
+              '<string name="repo_incomplete">%1$s download is incomplete</string>': '<string name="repo_incomplete">Bundled %1$s is incomplete</string>',
+              '<string name="updater_check">Check for updates</string>': '<string name="updater_check">Offline build — update check disabled</string>',
+              '<string name="updater_failed">Failed to check for updates</string>': '<string name="updater_failed">Offline build: update checks are disabled</string>',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+          strings.write_text(text, encoding="utf-8")
+
+          # Replace the network-backed repository with an asset-backed repository.
+          repository = app / "app" / "src" / "main" / "java" / "dev" / "busung" / "s25uroot" / "PayloadRepository.kt"
+          repository.write_text(r'''package dev.busung.s25uroot
+
+          import android.content.Context
+          import android.system.Os
+          import java.io.File
+          import java.io.FileOutputStream
+
+          data class VerifiedPayloads(
+              val profile: TargetProfile,
+              val exploit: File,
+              val kernelSu: File,
+          )
+
+          class PayloadRepository(private val context: Context) {
+              fun loadTargets(): List<TargetProfile> {
+                  val manifestBytes = context.assets.open(MANIFEST_ASSET).use { it.readBytes() }
+                  return SupportManifest.parse(manifestBytes).targets
+              }
+
+              fun resolveTarget(snapshot: DeviceSnapshot): TargetProfile = loadTargets()
+                  .firstOrNull { it.matches(snapshot) }
+                  ?: error(context.getString(R.string.repo_no_profile))
+
+              fun resolveTarget(profileId: String): TargetProfile = loadTargets()
+                  .firstOrNull { it.profileId == profileId }
+                  ?: error(context.getString(R.string.repo_profile_missing, profileId))
+
+              fun download(profile: TargetProfile, onProgress: (String) -> Unit): VerifiedPayloads {
+                  val directory = File(context.filesDir, "payloads/${profile.profileId}").apply { mkdirs() }
+                  val exploit = copyArtifact(
+                      profile.exploit,
+                      File(directory, "cve-2026-43499-app.so"),
+                      context.getString(R.string.artifact_exploit),
+                      onProgress,
+                  )
+                  val kernelSu = copyArtifact(
+                      profile.kernelSu,
+                      File(directory, "ksud-s25u-kdp"),
+                      context.getString(R.string.artifact_kernelsu),
+                      onProgress,
+                  )
+                  Os.chmod(exploit.absolutePath, 0b100100100)
+                  Os.chmod(kernelSu.absolutePath, 0b100100100)
+                  return VerifiedPayloads(profile, exploit, kernelSu)
+              }
+
+              private fun copyArtifact(
+                  artifact: RemoteArtifact,
+                  destination: File,
+                  label: String,
+                  onProgress: (String) -> Unit,
+              ): File {
+                  onProgress(context.getString(R.string.repo_downloading, label))
+                  val assetPath = offlineAssetPath(artifact.url)
+                  val temporary = File(destination.parentFile, "${destination.name}.part")
+                  if (temporary.exists()) temporary.delete()
+
+                  var total = 0L
+                  context.assets.open(assetPath).use { input ->
+                      FileOutputStream(temporary).use { output ->
+                          val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                          while (true) {
+                              val count = input.read(buffer)
+                              if (count < 0) break
+                              total += count
+                              require(total <= artifact.size) {
+                                  context.getString(R.string.repo_size_exceeded, label)
+                              }
+                              output.write(buffer, 0, count)
+                          }
+                          output.fd.sync()
+                      }
+                  }
+
+                  require(total == artifact.size) {
+                      context.getString(R.string.repo_incomplete, label)
+                  }
+                  if (destination.exists()) destination.delete()
+                  require(temporary.renameTo(destination)) {
+                      context.getString(R.string.repo_finalize_failed, label)
+                  }
+                  onProgress(context.getString(R.string.repo_verified, label))
+                  return destination
+              }
+
+              private fun offlineAssetPath(url: String): String {
+                  require(url.startsWith(SOURCE_PREFIX)) {
+                      context.getString(R.string.repo_url_invalid)
+                  }
+                  val relative = url.removePrefix(SOURCE_PREFIX)
+                  require(relative.isNotBlank() && relative.split('/').none { it == ".." }) {
+                      context.getString(R.string.repo_url_invalid)
+                  }
+                  return "$ASSET_PREFIX/$relative"
+              }
+
+              companion object {
+                  private const val MANIFEST_ASSET = "offline/support/targets-v3.json"
+                  private const val ASSET_PREFIX = "offline"
+                  private const val SOURCE_PREFIX =
+                      "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/"
+              }
+          }
+          '''.replace("          ", ""), encoding="utf-8")
+
+          # The updater is intentionally inert in an offline build. Browser links in
+          # About remain external actions, but the APK itself has no INTERNET permission.
+          updater = app / "app" / "src" / "main" / "java" / "dev" / "busung" / "s25uroot" / "AppUpdater.kt"
+          u = updater.read_text(encoding="utf-8")
+          u = re.sub(
+              r'suspend fun fetchLatestRelease\(\): UpdateInfo\? = withContext\(Dispatchers\.IO\) \{.*?\n    \}\n\n    fun isUpdateAvailable',
+              'suspend fun fetchLatestRelease(): UpdateInfo? = null\n\n    fun isUpdateAvailable',
+              u,
+              count=1,
+              flags=re.S,
+          )
+          u = re.sub(
+              r'suspend fun downloadApk\(.*?\n    \}\n\n    fun installApk',
+              'suspend fun downloadApk(\n        context: Context,\n        url: String,\n        onProgress: (Float) -> Unit = {},\n    ): File? = null\n\n    fun installApk',
+              u,
+              count=1,
+              flags=re.S,
+          )
+          updater.write_text(u, encoding="utf-8")
+
+          print(f"Bundled {len(copied)} unique manifest-referenced artifacts")
+          print(f"Bundled bytes: {sum(copied.values())}")
+          PY
+
+          PAYLOAD_COMMIT="$(git -C payloads rev-parse HEAD)"
+          APP_COMMIT="$(git -C appsrc rev-parse HEAD)"
+          cat > appsrc/app/src/main/assets/offline/source-commits.txt <<EOF
+          payload_repo=gamer765/Root-My-Galaxy-Payloads@$PAYLOAD_COMMIT
+          app_repo=BuSung-dev/Root-My-Galaxy@$APP_COMMIT
+          EOF
+
+          if grep -q 'android.permission.INTERNET' appsrc/app/src/main/AndroidManifest.xml; then
+            echo "INTERNET permission was not removed" >&2
+            exit 1
+          fi
+          grep -q 'dev.busung.s25uroot.offline' appsrc/app/build.gradle.kts
+          test -s appsrc/app/src/main/assets/offline/support/targets-v3.json
+
+      - name: Build installable debug APK
+        working-directory: appsrc
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD_COMMIT="$(git -C payloads rev-parse --short=12 HEAD)"
+          APP_COMMIT="$(git -C appsrc rev-parse --short=12 HEAD)"
+          mkdir -p dist
+          cp appsrc/app/build/outputs/apk/debug/app-debug.apk \
+            "dist/Root-My-Galaxy-Offline-${PAYLOAD_COMMIT}.apk"
+          tar \
+            --exclude='appsrc/.git' \
+            --exclude='appsrc/.gradle' \
+            --exclude='appsrc/app/build' \
+            -czf "dist/Root-My-Galaxy-Offline-source-${PAYLOAD_COMMIT}.tar.gz" \
+            appsrc
+          sha256sum dist/* > dist/SHA256SUMS.txt
+          {
+            echo "payload_repo_commit=$PAYLOAD_COMMIT"
+            echo "upstream_app_commit=$APP_COMMIT"
+            echo "apk=$(basename dist/*.apk)"
+          } > dist/BUILD-INFO.txt
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload offline build
+        uses: actions/upload-artifact@v4
+        with:
+          name: root-my-galaxy-offline
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
