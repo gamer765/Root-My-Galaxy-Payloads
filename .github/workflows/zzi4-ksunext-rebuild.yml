@@ -139,14 +139,19 @@ jobs:
       - name: Install host build dependencies
         run: sudo apt-get update && sudo apt-get install -y clang lld llvm
 
-      - name: Set up Android SDK and NDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android NDK r29
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "ndk;29.0.14206865"
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "ndk;29.0.14206865"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$SDK_ROOT/ndk/29.0.14206865" >> "$GITHUB_ENV"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -336,7 +341,7 @@ jobs:
             echo "Userspace scope: exact Next late-load with synchronous S928 staging patch"
             echo "Userspace metadata scope: build.rs version override only"
             echo "Samsung patch file SHA-256: $patch_sha"
-            echo "Support feed: enabled for exact SM-S928U1 + 6.1.162 automatic match"
+            echo "Support feed: not enabled; hardware validation pending"
             echo "Publication: build-only workflow; no feed change"
             cat dist/SHA256SUMS
           } > dist/BUILD-REPORT.txt
