@@ -1,0 +1,77 @@
+name: Build Offline Root My Galaxy APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'offline-app/**'
+      - 'support/targets-v3.json'
+      - 'artifacts/**'
+      - 'kernelsu/ksud-*'
+      - '.github/workflows/build-offline-root-my-galaxy.yml'
+
+concurrency:
+  group: offline-root-my-galaxy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Offline APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+        with:
+          path: payloads
+
+      - name: Checkout Root My Galaxy upstream
+        uses: actions/checkout@v4
+        with:
+          repository: BuSung-dev/Root-My-Galaxy
+          ref: main
+          path: appsrc
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 cmake;3.22.1'
+          accept-android-sdk-licenses: true
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare offline source tree
+        run: python3 payloads/offline-app/prepare_offline_build.py
+
+      - name: Build debug APK
+        working-directory: appsrc
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Package APK and checksums
+        run: |
+          mkdir -p dist
+          cp appsrc/app/build/outputs/apk/debug/app-debug.apk dist/Root-My-Galaxy-Offline.apk
+          sha256sum dist/Root-My-Galaxy-Offline.apk > dist/Root-My-Galaxy-Offline.apk.sha256
+          cp appsrc/app/src/main/assets/offline/artifact-index.json dist/artifact-index.json
+
+      - name: Upload offline APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Root-My-Galaxy-Offline
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
