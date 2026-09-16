@@ -1,0 +1,2 @@
+9f6acab75c7a2fe5863e6f7a264f8c436f20c13cd2311146cba68f4924b53fb8  dist/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.3.0
+2e76d5d9ec19a86e1e06d7c915ff4146de0b32585e869e07ac149f59b6f2783f  /home/runner/work/Root-My-Galaxy-Payloads/Root-My-Galaxy-Payloads/out/android14-6.1_kernelsu-e3q-S928USQU6ZZI4-kdp.ko

@@ -1,0 +1,12 @@
+KernelSU Next commit: 3b18216f71df189ab3d1b1ce0bdb21be1268e771
+Target release: 6.1.162-android14-11-34343818-abS928USQU6ZZI4
+Target KMI: android14-6.1
+Kernel compatibility scope: kernel-only Samsung KDP/RKP/DEFEX patch
+Userspace scope: exact Next late-load with synchronous S928 staging patch
+Userspace metadata scope: build.rs version override only
+Userspace dependency compatibility: registry java-properties; exact ksu_props and rustix commits via public mirrors
+Samsung patch file SHA-256: 9977f190b6df3aad4ed4caf8c9aaf04a1ff864a80931306c88b581dd09f1cdb2
+Support feed: exact SM-S928U1 + kernel 6.1.162 automatic test match
+Publication: GitHub raw downloads configured for the app test feed
+9f6acab75c7a2fe5863e6f7a264f8c436f20c13cd2311146cba68f4924b53fb8  dist/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.3.0
+2e76d5d9ec19a86e1e06d7c915ff4146de0b32585e869e07ac149f59b6f2783f  /home/runner/work/Root-My-Galaxy-Payloads/Root-My-Galaxy-Payloads/out/android14-6.1_kernelsu-e3q-S928USQU6ZZI4-kdp.ko
