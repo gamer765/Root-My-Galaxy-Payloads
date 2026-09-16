@@ -241,6 +241,7 @@ jobs:
           export CC_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang"
           export CXX_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang++"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK/bin/aarch64-linux-android35-clang"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
           cargo build --locked --target aarch64-linux-android --release \
             --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
           mkdir -p dist
