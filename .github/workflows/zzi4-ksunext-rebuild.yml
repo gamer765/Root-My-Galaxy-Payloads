@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/zzi4-ksunext-rebuild.yml"
+      - "Makefile"
+      - "src/slide_app.c"
       - "kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
       - "src/targets/e3q-S928USQU6ZZI4/**"
   workflow_dispatch:
@@ -137,7 +139,7 @@ jobs:
           path: out
 
       - name: Install host build dependencies
-        run: sudo apt-get update && sudo apt-get install -y clang lld llvm
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang lld llvm
 
       - name: Install Android NDK r29
         run: |
@@ -151,6 +153,18 @@ jobs:
           test -x "$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
           echo "ANDROID_NDK_ROOT=$NDK_ROOT" >> "$GITHUB_ENV"
 
+
+      - name: Rebuild legacy S928 ZZI4 app payload
+        run: |
+          set -euo pipefail
+          make TARGET=e3q-S928USQU6ZZI4 ANDROID_NDK_HOME="$ANDROID_NDK_ROOT" stable
+          built="build/e3q-S928USQU6ZZI4/cve-2026-43499-app.stable.so"
+          payload="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so"
+          test "$(stat -c %s "$built")" -eq 104128
+          llvm-readelf -h "$built" | grep -Fq "AArch64"
+          strings "$built" | grep -Fq "S928 route result=0"
+          install -m 0644 "$built" "$payload"
+          sha256sum "$payload"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -379,7 +393,10 @@ jobs:
           print(f"embedded Next module matches {expected}")
           PY
 
-          sha256sum "$daemon" "$module" > dist/SHA256SUMS
+          exploit="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so"
+          test -s "$exploit"
+          cp "$exploit" dist/cve-2026-43499-app.so
+          sha256sum "$daemon" "$module" "$exploit" > dist/SHA256SUMS
           patch_sha="$(sha256sum kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch | cut -d' ' -f1)"
           {
             echo "KernelSU Next commit: $KSU_COMMIT"
@@ -390,6 +407,7 @@ jobs:
             echo "Userspace metadata scope: build.rs version override only"
             echo "Userspace dependency compatibility: registry java-properties; exact ksu_props and rustix commits via public mirrors"
             echo "Samsung patch file SHA-256: $patch_sha"
+            echo "Exploit route: legacy S928 pselect path with timeout-compatible gate and failure diagnostics"
             echo "Support feed: publication pending final verification"
             echo "Publication: pending final app-feed commit"
             cat dist/SHA256SUMS
@@ -400,7 +418,7 @@ jobs:
           set -euo pipefail
           module="out/$MODULE_NAME"
           daemon="dist/$DAEMON_NAME"
-          exploit="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app.so"
+          exploit="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so"
 
           test -s "$module"
           test -s "$daemon"
@@ -430,7 +448,7 @@ jobs:
               "models": ["SM-S928U1"],
               "kernelVersions": ["6.1.162"],
               "exploit": {
-                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app.so",
+                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so",
                   "size": exploit_size
               },
               "kernelsu": {
@@ -478,6 +496,7 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add \
+            artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so \
             "kernelsu/$MODULE_NAME" \
             "kernelsu/$DAEMON_NAME" \
             kernelsu/BUILD-REPORT-e3q-S928USQU6ZZI4.txt \
@@ -486,7 +505,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "The verified ZZI4 pair and exact app-feed entry are already published."
           else
-            git commit -m "Publish ZZI4 KernelSU Next pair for app testing"
+            git commit -m "Publish ZZI4 S928 route-gate fix for app testing"
             git push origin HEAD:main
           fi
 
