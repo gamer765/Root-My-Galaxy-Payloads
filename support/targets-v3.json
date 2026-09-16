@@ -203,7 +203,7 @@
         "6.1.162"
       ],
       "exploit": {
-        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so",
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so",
         "size": 104128
       },
       "kernelsu": {
