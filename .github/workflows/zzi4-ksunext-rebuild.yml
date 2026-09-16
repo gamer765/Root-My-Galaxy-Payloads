@@ -212,17 +212,29 @@ jobs:
           PY
 
           cargo_toml="$KSU_ROOT/userspace/ksud/Cargo.toml"
-          python3 - "$cargo_toml" <<'PY'
+          python3 - "$cargo_toml" "$KSU_ROOT/userspace/ksud/Cargo.lock" <<'PY'
           from pathlib import Path
           import sys
 
-          path = Path(sys.argv[1])
-          source = path.read_text()
-          old = 'java-properties = { git = "https://github.com/Kernel-SU/java-properties.git", branch = "master", default-features = false }'
-          new = 'java-properties = { version = "=2.0.0", default-features = false }'
-          if source.count(old) != 1:
+          cargo_toml = Path(sys.argv[1])
+          cargo_lock = Path(sys.argv[2])
+          source = cargo_toml.read_text()
+          old_java = 'java-properties = { git = "https://github.com/Kernel-SU/java-properties.git", branch = "master", default-features = false }'
+          new_java = 'java-properties = { version = "=2.0.0", default-features = false }'
+          if source.count(old_java) != 1:
               raise SystemExit("unexpected java-properties dependency declaration")
-          path.write_text(source.replace(old, new, 1))
+          source = source.replace(old_java, new_java, 1)
+
+          old_props = "https://github.com/Kernel-SU/ksu_props"
+          new_props = "https://github.com/ReSukiSU/ksu_props"
+          if source.count(old_props) != 1:
+              raise SystemExit("unexpected ksu_props dependency declaration")
+          cargo_toml.write_text(source.replace(old_props, new_props, 1))
+
+          lock_source = cargo_lock.read_text()
+          if old_props not in lock_source:
+              raise SystemExit("ksu_props source missing from Cargo.lock")
+          cargo_lock.write_text(lock_source.replace(old_props, new_props))
           PY
 
           export CARGO_NET_GIT_FETCH_WITH_CLI=true
@@ -363,7 +375,7 @@ jobs:
             echo "Kernel compatibility scope: kernel-only Samsung KDP/RKP/DEFEX patch"
             echo "Userspace scope: exact Next late-load with synchronous S928 staging patch"
             echo "Userspace metadata scope: build.rs version override only"
-            echo "Userspace dependency compatibility: java-properties 2.0.0 registry release; upstream git revision unavailable"
+            echo "Userspace dependency compatibility: java-properties 2.0.0 registry; ksu_props 0.2.0 exact commit via public mirror"
             echo "Samsung patch file SHA-256: $patch_sha"
             echo "Support feed: not enabled; hardware validation pending"
             echo "Publication: build-only workflow; no feed change"
