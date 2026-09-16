@@ -212,12 +212,13 @@ jobs:
           PY
 
           cargo_toml="$KSU_ROOT/userspace/ksud/Cargo.toml"
-          python3 - "$cargo_toml" "$KSU_ROOT/userspace/ksud/Cargo.lock" <<'PY'
+          python3 - "$cargo_toml" "$KSU_ROOT/userspace/ksud/Cargo.lock" "$KSU_ROOT/userspace/ksuinit/Cargo.toml" <<'PY'
           from pathlib import Path
           import sys
 
           cargo_toml = Path(sys.argv[1])
           cargo_lock = Path(sys.argv[2])
+          ksuinit_toml = Path(sys.argv[3])
           source = cargo_toml.read_text()
           old_java = 'java-properties = { git = "https://github.com/Kernel-SU/java-properties.git", branch = "master", default-features = false }'
           new_java = 'java-properties = { version = "=2.0.0", default-features = false }'
@@ -235,18 +236,29 @@ jobs:
           if old_props not in lock_source:
               raise SystemExit("ksu_props source missing from Cargo.lock")
           cargo_lock.write_text(lock_source.replace(old_props, new_props))
+          init_source = ksuinit_toml.read_text()
+          old_rustix = "https://github.com/Kernel-SU/rustix.git"
+          new_rustix = "https://github.com/ReSukiSU/rustix.git"
+          if init_source.count(old_rustix) != 1:
+              raise SystemExit("unexpected rustix dependency declaration")
+          ksuinit_toml.write_text(init_source.replace(old_rustix, new_rustix, 1))
+
+          lock_source = cargo_lock.read_text()
+          if old_rustix not in lock_source:
+              raise SystemExit("rustix source missing from Cargo.lock")
+          cargo_lock.write_text(lock_source.replace(old_rustix, new_rustix))
           PY
 
           export CARGO_NET_GIT_FETCH_WITH_CLI=true
           cargo update --manifest-path "$cargo_toml" -p java-properties --precise 2.0.0
 
           changed_paths="$(git -C "$KSU_ROOT" status --porcelain | sed -E 's/^.. //')"
-          bad_paths="$(printf '%s\n' "$changed_paths" | grep -Ev '^(userspace/ksud/(Cargo.lock|Cargo.toml|build.rs|src/late_load.rs|src/utils.rs))$' || true)"
+          bad_paths="$(printf '%s\n' "$changed_paths" | grep -Ev '^(userspace/ksud/(Cargo.lock|Cargo.toml|build.rs|src/late_load.rs|src/utils.rs)|userspace/ksuinit/Cargo.toml)$' || true)"
           if [[ -n "$bad_paths" ]]; then
             printf 'unexpected userspace changes after patching:\n%s\n' "$bad_paths"
             exit 1
           fi
-          for expected_path in userspace/ksud/Cargo.lock userspace/ksud/Cargo.toml userspace/ksud/build.rs userspace/ksud/src/late_load.rs userspace/ksud/src/utils.rs; do
+          for expected_path in userspace/ksud/Cargo.lock userspace/ksud/Cargo.toml userspace/ksud/build.rs userspace/ksud/src/late_load.rs userspace/ksud/src/utils.rs userspace/ksuinit/Cargo.toml; do
             printf '%s\n' "$changed_paths" | grep -Fxq "$expected_path"
           done
 
@@ -375,7 +387,7 @@ jobs:
             echo "Kernel compatibility scope: kernel-only Samsung KDP/RKP/DEFEX patch"
             echo "Userspace scope: exact Next late-load with synchronous S928 staging patch"
             echo "Userspace metadata scope: build.rs version override only"
-            echo "Userspace dependency compatibility: java-properties 2.0.0 registry; ksu_props 0.2.0 exact commit via public mirror"
+            echo "Userspace dependency compatibility: registry java-properties; exact ksu_props and rustix commits via public mirrors"
             echo "Samsung patch file SHA-256: $patch_sha"
             echo "Support feed: not enabled; hardware validation pending"
             echo "Publication: build-only workflow; no feed change"
