@@ -185,7 +185,7 @@ jobs:
           llvm-readelf -h "$built" | grep -Fq "AArch64"
           strings "$built" | grep -Fq "slide=pselect main=pselect"
           strings "$built" | grep -Fq "e3q-S928USQU6ZZI4-app-physical-p0-oracle"
-          strings "$built" | grep -Fq "S928 route result=0"
+          strings "$built" | grep -Fq "pselect route done calls="
           install -m 0644 "$built" "$payload"
           sha256sum "$payload"
 
