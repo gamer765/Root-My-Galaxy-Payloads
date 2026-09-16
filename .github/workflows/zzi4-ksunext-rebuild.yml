@@ -228,7 +228,13 @@ jobs:
           cargo update --manifest-path "$cargo_toml" -p java-properties --precise 2.0.0
 
           changed="$(git -C "$KSU_ROOT" status --porcelain | sed -E 's/^.. //' | sort)"
-          expected_changes=          test "$changed" = "$expected_changes"
+          expected_changes="$(printf '%s\n' \
+            userspace/ksud/Cargo.lock \
+            userspace/ksud/Cargo.toml \
+            userspace/ksud/build.rs \
+            userspace/ksud/src/late_load.rs \
+            userspace/ksud/src/utils.rs)"
+          test "$changed" = "$expected_changes"
 
       - name: Verify and embed freshly built Next module
         run: |
