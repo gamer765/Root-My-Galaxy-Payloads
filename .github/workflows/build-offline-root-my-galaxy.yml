@@ -38,42 +38,30 @@ jobs:
           path: appsrc
 
       - name: Set up Java 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-          cache: gradle
-          cache-dependency-path: appsrc/**/*.gradle*
 
-      - name: Install Android build packages
-        shell: bash
-        run: |
-          set -euo pipefail
-          SDKMANAGER="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
-          if [[ ! -x "$SDKMANAGER" ]]; then
-            SDKMANAGER="$(command -v sdkmanager)"
-          fi
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" \
-            'platform-tools' \
-            'platforms;android-37' \
-            'build-tools;37.0.0' \
-            'cmake;3.22.1' \
-            'ndk;28.2.13676358'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 cmake;3.22.1'
+          accept-android-sdk-licenses: true
+
+      - name: Set up NDK r28
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Prepare fully offline source tree
         shell: bash
         run: |
           set -euo pipefail
           python3 payloads/offline-app/prepare_offline_build.py
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('appsrc/app/build.gradle.kts')
-          s = p.read_text(encoding='utf-8')
-          if 'ndkVersion = "28.2.13676358"' not in s:
-              s = s.replace('compileSdk = 37', 'compileSdk = 37\n    ndkVersion = "28.2.13676358"', 1)
-          p.write_text(s, encoding='utf-8')
-          PY
           ! grep -q 'android.permission.INTERNET' appsrc/app/src/main/AndroidManifest.xml
           ! grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' appsrc/app/src/main/AndroidManifest.xml
           ! grep -q 'HttpURLConnection\|java.net.URL' appsrc/app/src/main/java/dev/busung/s25uroot/PayloadRepository.kt
