@@ -172,7 +172,6 @@ static atomic_int slide_consume_last_sched_ret;
 static atomic_int slide_consume_last_sched_errno;
 static atomic_int slide_consumer_ready;
 static atomic_int slide_stack_write_window;
-static atomic_int slide_pselect_write_window;
 #if defined(APP_S928_ROUTE_DIAG) && APP_S928_ROUTE_DIAG
 static atomic_int slide_pselect_last_ret;
 static atomic_int slide_pselect_last_errno;
@@ -1043,7 +1042,6 @@ static void slide_reset_consume_state(void) {
   atomic_store(&slide_consume_last_sched_ret, -1);
   atomic_store(&slide_consume_last_sched_errno, 0);
   atomic_store(&slide_stack_write_window, 0);
-  atomic_store(&slide_pselect_write_window, 0);
 #if defined(APP_S928_ROUTE_DIAG) && APP_S928_ROUTE_DIAG
   atomic_store(&slide_pselect_last_ret, INT_MIN);
   atomic_store(&slide_pselect_last_errno, 0);
@@ -1206,8 +1204,14 @@ RMG_RACE_INLINE void slide_pselect_stack_copy(void) {
           atomic_load(&slide_consume_last_sched_ret),
           atomic_load(&slide_consume_last_sched_errno));
 #endif
+  /*
+   * This fd set uses an unarmed timerfd (or an empty pipe fallback), so the
+   * normal pselect timeout is expected. Linux copies result fd sets back on
+   * every non-error return; require that return plus a successful scheduler
+   * transition as evidence that the stack-copy path completed.
+   */
   atomic_store(&slide_stack_write_window,
-               ret > 0 && atomic_load(&slide_consume_sched_ok) > 0);
+               ret >= 0 && atomic_load(&slide_consume_sched_ok) > 0);
 
   close(high_read);
   if (block_fd != pipefd[0]) {
@@ -2114,11 +2118,11 @@ static int slide_child_trigger_write(void) {
 #if defined(APP_S928_STABLE_RACE) && APP_S928_STABLE_RACE
 #if defined(APP_S928_ROUTE_DIAG) && APP_S928_ROUTE_DIAG
   int waiter_ok = atomic_load(&slide_waiter_ok);
-  int write_window = atomic_load(&slide_pselect_write_window);
+  int write_window = atomic_load(&slide_stack_write_window);
   int result = waiter_ok != 0 && write_window != 0;
 #else
   int result = atomic_load(&slide_waiter_ok) != 0 &&
-               atomic_load(&slide_pselect_write_window) != 0;
+               atomic_load(&slide_stack_write_window) != 0;
 #endif
   atomic_store(&slide_route_stop, 1);
   SYSCHK(pthread_join(waiter, NULL));
