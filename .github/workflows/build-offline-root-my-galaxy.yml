@@ -3,6 +3,8 @@ name: Build Offline Root My Galaxy APK
 on:
   workflow_dispatch:
   push:
+    branches:
+      - offline-app-build-v3
     paths:
       - 'offline-app/**'
       - 'support/targets-v3.json'
@@ -40,15 +42,12 @@ jobs:
           java-version: '21'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools platforms;android-35 cmake;3.22.1'
-          accept-android-sdk-licenses: true
+        uses: android-actions/setup-android@v3
 
-      - name: Setup NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r28
+      - name: Install Android build components
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-37' 'build-tools;37.0.0' 'cmake;3.22.1' 'ndk;28.0.13004108'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -58,7 +57,9 @@ jobs:
 
       - name: Build debug APK
         working-directory: appsrc
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
       - name: Package APK and checksums
         run: |
