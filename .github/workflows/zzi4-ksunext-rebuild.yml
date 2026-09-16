@@ -16,6 +16,7 @@ permissions:
 
 env:
   KSU_COMMIT: 3b18216f71df189ab3d1b1ce0bdb21be1268e771
+  LEGACY_ENGINE_COMMIT: 139c6dad8cc81be7f4ab2ef03c6a1463cd60f000
   TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6ZZI4
   TARGET_KMI: android14-6.1
   MODULE_NAME: android14-6.1_kernelsu-e3q-S928USQU6ZZI4-kdp.ko
@@ -157,11 +158,33 @@ jobs:
       - name: Rebuild legacy S928 ZZI4 app payload
         run: |
           set -euo pipefail
-          make TARGET=e3q-S928USQU6ZZI4 ANDROID_NDK_HOME="$ANDROID_NDK_ROOT" stable
-          built="build/e3q-S928USQU6ZZI4/cve-2026-43499-app.stable.so"
-          payload="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so"
+          LEGACY_ROOT="$RUNNER_TEMP/root-my-galaxy-legacy-s928"
+          git clone --no-checkout \
+            https://github.com/BuSung-dev/Root-My-Galaxy-Payloads.git \
+            "$LEGACY_ROOT"
+          git config --global --add safe.directory "$LEGACY_ROOT"
+          git -C "$LEGACY_ROOT" checkout --detach "$LEGACY_ENGINE_COMMIT"
+          test "$(git -C "$LEGACY_ROOT" rev-parse HEAD)" = "$LEGACY_ENGINE_COMMIT"
+
+          target_dir="$LEGACY_ROOT/src/targets/e3q-S928USQU6ZZI4"
+          mkdir -p "$target_dir"
+          install -m 0644 \
+            "$GITHUB_WORKSPACE/src/targets/e3q-S928USQU6ZZI4/target.h" \
+            "$target_dir/target.h"
+          install -m 0644 \
+            "$GITHUB_WORKSPACE/src/targets/e3q-S928USQU6ZZI4/p0_fingerprint.h" \
+            "$target_dir/p0_fingerprint.h"
+
+          make -C "$LEGACY_ROOT" \
+            TARGET=e3q-S928USQU6ZZI4 \
+            ANDROID_NDK_HOME="$ANDROID_NDK_ROOT" \
+            stable
+          built="$LEGACY_ROOT/build/e3q-S928USQU6ZZI4/cve-2026-43499-app.stable.so"
+          payload="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so"
           test "$(stat -c %s "$built")" -eq 104128
           llvm-readelf -h "$built" | grep -Fq "AArch64"
+          strings "$built" | grep -Fq "slide=pselect main=pselect"
+          strings "$built" | grep -Fq "e3q-S928USQU6ZZI4-app-physical-p0-oracle"
           strings "$built" | grep -Fq "S928 route result=0"
           install -m 0644 "$built" "$payload"
           sha256sum "$payload"
@@ -393,7 +416,7 @@ jobs:
           print(f"embedded Next module matches {expected}")
           PY
 
-          exploit="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so"
+          exploit="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so"
           test -s "$exploit"
           cp "$exploit" dist/cve-2026-43499-app.so
           sha256sum "$daemon" "$module" "$exploit" > dist/SHA256SUMS
@@ -407,7 +430,7 @@ jobs:
             echo "Userspace metadata scope: build.rs version override only"
             echo "Userspace dependency compatibility: registry java-properties; exact ksu_props and rustix commits via public mirrors"
             echo "Samsung patch file SHA-256: $patch_sha"
-            echo "Exploit route: legacy S928 pselect path with timeout-compatible gate and failure diagnostics"
+            echo "Exploit route: upstream legacy S928 engine commit $LEGACY_ENGINE_COMMIT with ZZI4 target constants"
             echo "Support feed: publication pending final verification"
             echo "Publication: pending final app-feed commit"
             cat dist/SHA256SUMS
@@ -418,7 +441,7 @@ jobs:
           set -euo pipefail
           module="out/$MODULE_NAME"
           daemon="dist/$DAEMON_NAME"
-          exploit="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so"
+          exploit="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so"
 
           test -s "$module"
           test -s "$daemon"
@@ -448,7 +471,7 @@ jobs:
               "models": ["SM-S928U1"],
               "kernelVersions": ["6.1.162"],
               "exploit": {
-                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so",
+                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so",
                   "size": exploit_size
               },
               "kernelsu": {
@@ -496,7 +519,7 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add \
-            artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-diagnostic.so \
+            artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so \
             "kernelsu/$MODULE_NAME" \
             "kernelsu/$DAEMON_NAME" \
             kernelsu/BUILD-REPORT-e3q-S928USQU6ZZI4.txt \
@@ -505,7 +528,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "The verified ZZI4 pair and exact app-feed entry are already published."
           else
-            git commit -m "Publish ZZI4 S928 route-gate fix for app testing"
+            git commit -m "Publish ZZI4 legacy S928 payload for app testing"
             git push origin HEAD:main
           fi
 
