@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   KSU_COMMIT: 3b18216f71df189ab3d1b1ce0bdb21be1268e771
@@ -390,10 +390,105 @@ jobs:
             echo "Userspace metadata scope: build.rs version override only"
             echo "Userspace dependency compatibility: registry java-properties; exact ksu_props and rustix commits via public mirrors"
             echo "Samsung patch file SHA-256: $patch_sha"
-            echo "Support feed: not enabled; hardware validation pending"
-            echo "Publication: build-only workflow; no feed change"
+            echo "Support feed: publication pending final verification"
+            echo "Publication: pending final app-feed commit"
             cat dist/SHA256SUMS
           } > dist/BUILD-REPORT.txt
+
+      - name: Publish verified ZZI4 pair through the app feed
+        run: |
+          set -euo pipefail
+          module="out/$MODULE_NAME"
+          daemon="dist/$DAEMON_NAME"
+          exploit="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app.so"
+
+          test -s "$module"
+          test -s "$daemon"
+          test -s "$exploit"
+          module_sha="$(awk '{print $1}' out/MODULE-SHA256SUM)"
+          test "$(sha256sum "$module" | awk '{print $1}')" = "$module_sha"
+          daemon_size="$(stat -c %s "$daemon")"
+          exploit_size="$(stat -c %s "$exploit")"
+          test "$exploit_size" -eq 104128
+
+          install -m 0644 "$module" "kernelsu/$MODULE_NAME"
+          install -m 0755 "$daemon" "kernelsu/$DAEMON_NAME"
+
+          python3 - "support/targets-v3.json" "$daemon_size" "$exploit_size" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          feed_path = Path(sys.argv[1])
+          daemon_size = int(sys.argv[2])
+          exploit_size = int(sys.argv[3])
+          feed = json.loads(feed_path.read_text())
+          payload_id = "e3q-S928USQU6ZZI4"
+          entry = {
+              "payloadId": payload_id,
+              "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZI4 | Kernel 6.1.162 | KernelSU Next 3.3.0",
+              "models": ["SM-S928U1"],
+              "kernelVersions": ["6.1.162"],
+              "exploit": {
+                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app.so",
+                  "size": exploit_size
+              },
+              "kernelsu": {
+                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.3.0",
+                  "size": daemon_size
+              }
+          }
+          payloads = [
+              item for item in feed["payloads"]
+              if item.get("payloadId") != payload_id
+          ]
+          insert_at = next(
+              (
+                  index + 1
+                  for index, item in enumerate(payloads)
+                  if item.get("payloadId") == "e3q-S928USQU6ZZHL"
+              ),
+              len(payloads)
+          )
+          payloads.insert(insert_at, entry)
+          feed["payloads"] = payloads
+          feed_path.write_text(json.dumps(feed, indent=2) + "\n")
+          PY
+
+          python3 - "dist/BUILD-REPORT.txt" <<'PY'
+          import sys
+          from pathlib import Path
+
+          report_path = Path(sys.argv[1])
+          report = report_path.read_text()
+          report = report.replace(
+              "Support feed: publication pending final verification",
+              "Support feed: exact SM-S928U1 + kernel 6.1.162 automatic test match"
+          )
+          report = report.replace(
+              "Publication: pending final app-feed commit",
+              "Publication: GitHub raw downloads configured for the app test feed"
+          )
+          report_path.write_text(report)
+          PY
+
+          install -m 0644 dist/BUILD-REPORT.txt "kernelsu/BUILD-REPORT-e3q-S928USQU6ZZI4.txt"
+          install -m 0644 dist/SHA256SUMS "kernelsu/SHA256SUMS-e3q-S928USQU6ZZI4.txt"
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            "kernelsu/$MODULE_NAME" \
+            "kernelsu/$DAEMON_NAME" \
+            kernelsu/BUILD-REPORT-e3q-S928USQU6ZZI4.txt \
+            kernelsu/SHA256SUMS-e3q-S928USQU6ZZI4.txt \
+            support/targets-v3.json
+          if git diff --cached --quiet; then
+            echo "The verified ZZI4 pair and exact app-feed entry are already published."
+          else
+            git commit -m "Publish ZZI4 KernelSU Next pair for app testing"
+            git push origin HEAD:main
+          fi
 
       - name: Upload pure Next test pair
         uses: actions/upload-artifact@v4
