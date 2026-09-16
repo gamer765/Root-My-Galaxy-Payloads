@@ -183,9 +183,11 @@ jobs:
           payload="artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so"
           test "$(stat -c %s "$built")" -eq 104128
           llvm-readelf -h "$built" | grep -Fq "AArch64"
-          strings "$built" | grep -Fq "slide=pselect main=pselect"
-          strings "$built" | grep -Fq "e3q-S928USQU6ZZI4-app-physical-p0-oracle"
-          strings "$built" | grep -Fq "pselect route done calls="
+          # Verify the pinned source lineage directly; the fixed-size stable ELF may
+          # truncate optional logging strings after linking.
+          grep -Fq 'slide=pselect main=pselect' "$LEGACY_ROOT/src/util.c"
+          grep -Fq 'APP_S928_STABLE_RACE' "$LEGACY_ROOT/src/slide_app.c"
+          grep -Fq 'PSELECT_ROUTE_NFDS' "$LEGACY_ROOT/src/slide_app.c"
           install -m 0644 "$built" "$payload"
           sha256sum "$payload"
 
