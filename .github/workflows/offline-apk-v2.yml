@@ -32,15 +32,6 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Install Android components
-        shell: bash
-        run: |
-          set -euo pipefail
-          SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
-          if [[ ! -x "$SDKMANAGER" ]]; then SDKMANAGER="$(command -v sdkmanager)"; fi
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" 'platform-tools' 'platforms;android-37' 'build-tools;37.0.0' 'cmake;3.22.1' 'ndk;28.2.13676358'
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -49,19 +40,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 payloads/offline-app/prepare_offline_build.py
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('appsrc/app/build.gradle.kts')
-          s = p.read_text()
-          if 'ndkVersion = "28.2.13676358"' not in s:
-              s = s.replace('compileSdk = 37', 'compileSdk = 37\n    ndkVersion = "28.2.13676358"', 1)
-          p.write_text(s)
-          PY
           ! grep -q 'android.permission.INTERNET' appsrc/app/src/main/AndroidManifest.xml
 
       - name: Build APK
         working-directory: appsrc
         shell: bash
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
         run: |
           set -euo pipefail
           chmod +x gradlew
