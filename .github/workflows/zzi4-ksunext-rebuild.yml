@@ -273,6 +273,7 @@ jobs:
           module_sections="$(llvm-readelf -SW "$module")"
           llvm-nm -a "$module" | grep -Eq ' [A-Za-z] ksu_samsung_kdp_init$'
           llvm-nm -a "$module" | grep -Eq ' [A-Za-z] ksu_samsung_defex_init$'
+          mkdir -p "$KSU_ROOT/userspace/ksud/bin/aarch64"
           install -m 0644 "$module" \
             "$KSU_ROOT/userspace/ksud/bin/aarch64/android14-6.1_kernelsu.ko"
 
