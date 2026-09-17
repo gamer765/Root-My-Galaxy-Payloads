@@ -1,0 +1,198 @@
+name: Build Root My Galaxy Offline APK v5
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/offline-apk-v5.yml"
+      - "tools/make_offline_app.py"
+      - "support/targets-v3.json"
+      - "artifacts/**"
+      - "kernelsu/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: root-my-galaxy-offline-v5-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build offline APK with latest KernelSU Next
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+        with:
+          path: payloads
+
+      - name: Checkout upstream Root My Galaxy
+        uses: actions/checkout@v4
+        with:
+          repository: BuSung-dev/Root-My-Galaxy
+          ref: main
+          path: appsrc
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-35 cmake;3.22.1"
+          accept-android-sdk-licenses: true
+
+      - name: Set up NDK r28
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Fetch and verify latest KernelSU Next manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, pathlib, re, urllib.request
+
+          request = urllib.request.Request(
+              "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/releases/latest",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "User-Agent": "Root-My-Galaxy-Offline-Builder",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=60) as response:
+              release = json.load(response)
+
+          pattern = re.compile(r"^KernelSU_Next_v.*_\d+-release\.apk$")
+          candidates = [
+              asset for asset in release.get("assets", [])
+              if pattern.match(asset.get("name", ""))
+              and "spoofed" not in asset.get("name", "").lower()
+          ]
+          if len(candidates) != 1:
+              raise SystemExit(f"Expected one standard KernelSU Next manager APK, found {len(candidates)}")
+
+          asset = candidates[0]
+          out_dir = pathlib.Path("manager-download")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          apk = out_dir / "KernelSU-Next.apk"
+
+          download = urllib.request.Request(
+              asset["browser_download_url"],
+              headers={"User-Agent": "Root-My-Galaxy-Offline-Builder"},
+          )
+          digest = hashlib.sha256()
+          with urllib.request.urlopen(download, timeout=180) as response, apk.open("wb") as output:
+              while True:
+                  block = response.read(1024 * 1024)
+                  if not block:
+                      break
+                  digest.update(block)
+                  output.write(block)
+
+          actual = digest.hexdigest()
+          published = asset.get("digest") or ""
+          if published:
+              algorithm, _, expected = published.partition(":")
+              if algorithm.lower() != "sha256" or expected.lower() != actual:
+                  raise SystemExit(f"Manager digest mismatch: {published} != sha256:{actual}")
+
+          metadata = {
+              "repository": "KernelSU-Next/KernelSU-Next",
+              "release": release.get("tag_name"),
+              "releaseName": release.get("name"),
+              "asset": asset["name"],
+              "size": apk.stat().st_size,
+              "sha256": actual,
+              "publishedDigest": published,
+              "sourceUrl": asset["browser_download_url"],
+          }
+          (out_dir / "manager.json").write_text(
+              json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(metadata, indent=2))
+          PY
+
+      - name: Convert app to offline build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 payloads/tools/make_offline_app.py \
+            --payload-repo payloads \
+            --app appsrc \
+            --manager-apk manager-download/KernelSU-Next.apk \
+            --manager-metadata manager-download/manager.json
+
+          PAYLOAD_COMMIT="$(git -C payloads rev-parse HEAD)"
+          APP_COMMIT="$(git -C appsrc rev-parse HEAD)"
+          printf 'payload_repo=gamer765/Root-My-Galaxy-Payloads@%s\nupstream_app=BuSung-dev/Root-My-Galaxy@%s\n' \
+            "$PAYLOAD_COMMIT" "$APP_COMMIT" \
+            > appsrc/app/src/main/assets/offline/source-commits.txt
+
+          ! grep -q 'android.permission.INTERNET' appsrc/app/src/main/AndroidManifest.xml
+          ! grep -q 'KERNEL_SU_MANAGER_URL' appsrc/app/src/main/java/dev/busung/s25uroot/MainActivity.kt
+          grep -q 'com.rifsxd.ksunext' appsrc/app/src/main/AndroidManifest.xml
+          grep -q 'KERNEL_SU_MANAGER_ASSET' appsrc/app/src/main/java/dev/busung/s25uroot/MainActivity.kt
+          test -s appsrc/app/src/main/assets/offline/manager/KernelSU-Next.apk
+
+      - name: Build debug APK
+        working-directory: appsrc
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify finished APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="appsrc/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          if apkanalyzer manifest permissions "$APK" | grep -q 'android.permission.INTERNET'; then
+            echo "ERROR: INTERNET permission is present in final APK"
+            exit 1
+          fi
+          unzip -l "$APK" | grep -q 'assets/offline/manager/KernelSU-Next.apk'
+          unzip -l "$APK" | grep -q 'assets/offline/manager/manager.json'
+          unzip -l "$APK" | grep -q 'assets/offline/support/targets-v3.json'
+          echo "Verified: no INTERNET permission; payloads and KernelSU Next manager are bundled"
+
+      - name: Package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD_SHA="$(git -C payloads rev-parse --short=12 HEAD)"
+          APP_SHA="$(git -C appsrc rev-parse --short=12 HEAD)"
+          MANAGER_RELEASE="$(python3 -c 'import json; print(json.load(open("manager-download/manager.json"))["release"])')"
+          mkdir -p dist
+          cp appsrc/app/build/outputs/apk/debug/app-debug.apk \
+            "dist/Root-My-Galaxy-Offline-KSUNext-${PAYLOAD_SHA}.apk"
+          cp appsrc/app/src/main/assets/offline/artifact-index.json dist/artifact-index.json
+          cp manager-download/manager.json dist/kernelsu-next-manager.json
+          printf 'payload_repo_commit=%s\nupstream_app_commit=%s\nkernelsu_next_manager=%s\n' \
+            "$PAYLOAD_SHA" "$APP_SHA" "$MANAGER_RELEASE" > dist/BUILD-INFO.txt
+          sha256sum dist/*.apk > dist/SHA256SUMS.txt
+          cat dist/BUILD-INFO.txt
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload offline APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Root-My-Galaxy-Offline-KSUNext
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
