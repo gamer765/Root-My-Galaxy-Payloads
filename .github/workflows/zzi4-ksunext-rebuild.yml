@@ -54,10 +54,12 @@ jobs:
           git -C "$KSU_ROOT" cherry-pick \
             "$KSU_SAMSUNG_KERNEL_COMMIT" \
             "$KSU_SAMSUNG_USERSPACE_COMMIT"
-          git -C "$KSU_ROOT" log --format='%s' -2 | \
-            grep -Fxq 'fix: stage ksud before switching to late-loaded context'
-          git -C "$KSU_ROOT" log --format='%s' -2 | \
-            grep -Fxq 'feat: add Samsung KDP/RKP/DEFEX late-load compatibility'
+          git -C "$KSU_ROOT" log --format='%s' -2 > \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+          grep -Fxq 'fix: stage ksud before switching to late-loaded context' \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+          grep -Fxq 'feat: add Samsung KDP/RKP/DEFEX late-load compatibility' \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
 
           test -n "${KDIR:-}"
           test -f "$KDIR/Makefile"
@@ -222,10 +224,12 @@ jobs:
           git -C "$KSU_ROOT" cherry-pick \
             "$KSU_SAMSUNG_KERNEL_COMMIT" \
             "$KSU_SAMSUNG_USERSPACE_COMMIT"
-          git -C "$KSU_ROOT" log --format='%s' -2 | \
-            grep -Fxq 'fix: stage ksud before switching to late-loaded context'
-          git -C "$KSU_ROOT" log --format='%s' -2 | \
-            grep -Fxq 'feat: add Samsung KDP/RKP/DEFEX late-load compatibility'
+          git -C "$KSU_ROOT" log --format='%s' -2 > \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+          grep -Fxq 'fix: stage ksud before switching to late-loaded context' \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+          grep -Fxq 'feat: add Samsung KDP/RKP/DEFEX late-load compatibility' \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
           grep -Fq 'stage_daemon' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
           grep -Fq 'finish_install' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
           grep -Fq 'CONFIG_KSU_SAMSUNG_KDP' "$KSU_ROOT/kernel/Kconfig"
