@@ -232,9 +232,9 @@ jobs:
             "$RUNNER_TEMP/ksunext-pr-commits.txt"
           grep -Fq 'stage_daemon' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
           grep -Fq 'finish_install' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
-          grep -Fq 'CONFIG_KSU_SAMSUNG_KDP' "$KSU_ROOT/kernel/Kconfig"
-          grep -Fq 'CONFIG_KSU_SAMSUNG_RKP' "$KSU_ROOT/kernel/Kconfig"
-          grep -Fq 'CONFIG_KSU_SAMSUNG_DEFEX' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'config KSU_SAMSUNG_KDP' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'config KSU_SAMSUNG_RKP' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'config KSU_SAMSUNG_DEFEX' "$KSU_ROOT/kernel/Kconfig"
 
           version_code="$((30000 + $(git -C "$KSU_ROOT" rev-list --count HEAD)))"
           {
