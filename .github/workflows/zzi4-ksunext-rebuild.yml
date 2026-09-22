@@ -212,14 +212,6 @@ jobs:
           git -C "$KSU_ROOT" checkout --detach "$KSU_COMMIT"
           test "$(git -C "$KSU_ROOT" rev-parse HEAD)" = "$KSU_COMMIT"
 
-          # Apply the Next userspace portion of the S928 compatibility patch.
-          # This keeps late-load synchronous: the staged daemon is moved into
-          # /data/adb/ksud before module loading changes this process context.
-          git -C "$KSU_ROOT" apply --whitespace=nowarn \
-            --include='userspace/ksud/src/late_load.rs' \
-            --include='userspace/ksud/src/utils.rs' \
-            "$GITHUB_WORKSPACE/kernelsu/patches/KernelSU-Next-v3.4.0-samsung-kdp-rkp-defex.patch"
-
           git -C "$KSU_ROOT" fetch --no-tags origin \
             "$KSU_SAMSUNG_KERNEL_COMMIT" \
             "$KSU_SAMSUNG_USERSPACE_COMMIT"
