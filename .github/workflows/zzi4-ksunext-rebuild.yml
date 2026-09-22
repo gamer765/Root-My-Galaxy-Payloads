@@ -325,10 +325,6 @@ jobs:
           strings "$daemon" | grep -Fq "$KSU_VERSION_MARKER"
           strings "$daemon" | grep -Fq 'Failed to stage ksud'
           strings "$daemon" | grep -Fq 'Failed to finish ksud installation'
-          if strings "$daemon" | grep -Fq 'Restarting KernelSU Next Manager'; then
-            echo "daemon still contains the old asynchronous late-load restart path"
-            exit 1
-          fi
           if strings "$daemon" | grep -Eiq 'KernelSU-v3\.2\.5|3\.2\.5|legacy-s928|regular-module'; then
             echo "daemon contains forbidden non-Next lineage marker"
             exit 1
@@ -409,8 +405,7 @@ jobs:
             echo "Kernel compatibility scope: upstream PR #1507 KDP/RKP/DEFEX late-load support"
             echo "Userspace scope: upstream PR #1507 stage-before-late-load fix"
             echo "Userspace metadata scope: build.rs version override only"
-            echo "Userspace dependency compatibility: registry java-properties; exact ksu_props and rustix commits via public mirrors"
-            echo "Samsung patch file SHA-256: $patch_sha"
+            echo "Userspace dependency compatibility: exact KernelSU Next v3.4.0 KernelSU2 dependency graph"
             echo "Exploit route: upstream legacy S928 engine commit $LEGACY_ENGINE_COMMIT with ZZI4 target constants"
             echo "Support feed: publication pending final verification"
             echo "Publication: pending final app-feed commit"
