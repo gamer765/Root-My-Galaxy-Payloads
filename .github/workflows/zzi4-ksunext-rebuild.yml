@@ -236,6 +236,53 @@ jobs:
           grep -Fq 'config KSU_SAMSUNG_RKP' "$KSU_ROOT/kernel/Kconfig"
           grep -Fq 'config KSU_SAMSUNG_DEFEX' "$KSU_ROOT/kernel/Kconfig"
 
+          # Root My Galaxy waits for the loader process to return before it
+          # verifies the KernelSU control fd. Keep the upstream staging and
+          # finish-install changes, but remove ksud's double-fork daemonization
+          # and Manager restart so the loader remains synchronous through the
+          # module load and control-fd handoff.
+          python3 - "$KSU_ROOT/userspace/ksud/src/late_load.rs" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          source = path.read_text()
+          source = source.replace(
+              "use std::process::Command;\n",
+              "",
+              1,
+          )
+          source = source.replace(
+              "pub fn run(package_name: &String, kmi: Option<String>, allow_shell: bool) -> Result<()> {",
+              "pub fn run(_package_name: &String, kmi: Option<String>, allow_shell: bool) -> Result<()> {",
+              1,
+          )
+          daemonize = "    utils::daemonize(false)?;\n"
+          if source.count(daemonize) != 1:
+              raise SystemExit("unexpected late_load.rs daemonize layout")
+          source = source.replace(daemonize, "", 1)
+          marker = "    // 14. Restart Manager so it gets a fresh ksu fd from the newly loaded kernel module\n"
+          if source.count(marker) != 1:
+              raise SystemExit("unexpected late_load.rs Manager restart layout")
+          start = source.index(marker)
+          end_marker = "    Ok(())\n}"
+          end = source.index(end_marker, start)
+          source = (
+              source[:start]
+              + "    // Root My Galaxy performs control-fd verification after this function returns.\n\n"
+              + source[end:]
+          )
+          path.write_text(source)
+          PY
+          if grep -Fq 'utils::daemonize(false)?' "$KSU_ROOT/userspace/ksud/src/late_load.rs"; then
+            echo "late-load remains asynchronous"
+            exit 1
+          fi
+          if grep -Fq 'Restarting KernelSU Next Manager' "$KSU_ROOT/userspace/ksud/src/late_load.rs"; then
+            echo "late-load still restarts Manager before the wrapper verifies control"
+            exit 1
+          fi
+
           version_code="$((30000 + $(git -C "$KSU_ROOT" rev-list --count HEAD)))"
           {
             echo "KSU_BUILD_VERSION_CODE=$version_code"
@@ -403,7 +450,8 @@ jobs:
             echo "Target release: $TARGET_RELEASE"
             echo "Target KMI: $TARGET_KMI"
             echo "Kernel compatibility scope: upstream PR #1507 KDP/RKP/DEFEX late-load support"
-            echo "Userspace scope: upstream PR #1507 stage-before-late-load fix"
+            echo "Userspace scope: upstream PR #1507 staging plus synchronous Root My Galaxy handoff"
+            echo "Root My Galaxy integration: no late-load double-fork or pre-verification Manager restart"
             echo "Userspace metadata scope: build.rs version override only"
             echo "Userspace dependency compatibility: exact KernelSU Next v3.4.0 KernelSU2 dependency graph"
             echo "Exploit route: upstream legacy S928 engine commit $LEGACY_ENGINE_COMMIT with ZZI4 target constants"
