@@ -49,6 +49,8 @@ jobs:
           git -C "$KSU_ROOT" fetch --no-tags origin \
             "$KSU_SAMSUNG_KERNEL_COMMIT" \
             "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          git -C "$KSU_ROOT" config user.name "Root My Galaxy CI"
+          git -C "$KSU_ROOT" config user.email "ci@rootmygalaxy.invalid"
           git -C "$KSU_ROOT" cherry-pick \
             "$KSU_SAMSUNG_KERNEL_COMMIT" \
             "$KSU_SAMSUNG_USERSPACE_COMMIT"
@@ -215,6 +217,8 @@ jobs:
           git -C "$KSU_ROOT" fetch --no-tags origin \
             "$KSU_SAMSUNG_KERNEL_COMMIT" \
             "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          git -C "$KSU_ROOT" config user.name "Root My Galaxy CI"
+          git -C "$KSU_ROOT" config user.email "ci@rootmygalaxy.invalid"
           git -C "$KSU_ROOT" cherry-pick \
             "$KSU_SAMSUNG_KERNEL_COMMIT" \
             "$KSU_SAMSUNG_USERSPACE_COMMIT"
