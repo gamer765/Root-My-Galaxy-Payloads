@@ -7,7 +7,6 @@ on:
       - ".github/workflows/zzi4-ksunext-rebuild.yml"
       - "Makefile"
       - "src/slide_app.c"
-      - "kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
       - "src/targets/e3q-S928USQU6ZZI4/**"
   workflow_dispatch:
 
@@ -15,12 +14,16 @@ permissions:
   contents: write
 
 env:
-  KSU_COMMIT: 3b18216f71df189ab3d1b1ce0bdb21be1268e771
+  KSU_RELEASE_TAG: v3.4.0
+  KSU_COMMIT: 1a879d6a866f80b1fa1c1009a2ffa747873cbb5e
+  KSU_SAMSUNG_KERNEL_COMMIT: b62019e7ac452d73f3198e0f4cc60963d18d3283
+  KSU_SAMSUNG_USERSPACE_COMMIT: 00a165704e9330bca4db6838e63555153edbe01a
+  KSU_SAMSUNG_PR_MERGE_COMMIT: b8dafae390eba00cba9983e8ef1e1eaad74ba4ed
   LEGACY_ENGINE_COMMIT: 139c6dad8cc81be7f4ab2ef03c6a1463cd60f000
   TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6ZZI4
   TARGET_KMI: android14-6.1
   MODULE_NAME: android14-6.1_kernelsu-e3q-S928USQU6ZZI4-kdp.ko
-  DAEMON_NAME: ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.3.0
+  DAEMON_NAME: ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.4.0
 
 jobs:
   build-module:
@@ -43,15 +46,16 @@ jobs:
           git -C "$KSU_ROOT" checkout --detach "$KSU_COMMIT"
           test "$(git -C "$KSU_ROOT" rev-parse HEAD)" = "$KSU_COMMIT"
 
-          # The Samsung compatibility layer is applied only to the checked-out
-          # KernelSU Next kernel tree. No userspace patch or prebuilt module is used.
-          git -C "$KSU_ROOT" apply --whitespace=nowarn --include='kernel/**' \
-            "$GITHUB_WORKSPACE/kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
-          bad_files="$(git -C "$KSU_ROOT" status --porcelain | sed -E 's/^.. //' | grep -v '^kernel/' || true)"
-          if [[ -n "$bad_files" ]]; then
-            printf 'unexpected non-kernel changes after patching:\n%s\n' "$bad_files"
-            exit 1
-          fi
+          git -C "$KSU_ROOT" fetch --no-tags origin \
+            "$KSU_SAMSUNG_KERNEL_COMMIT" \
+            "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          git -C "$KSU_ROOT" cherry-pick \
+            "$KSU_SAMSUNG_KERNEL_COMMIT" \
+            "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          git -C "$KSU_ROOT" log --format='%s' -2 | \
+            grep -Fxq 'fix: stage ksud before switching to late-loaded context'
+          git -C "$KSU_ROOT" log --format='%s' -2 | \
+            grep -Fxq 'feat: add Samsung KDP/RKP/DEFEX late-load compatibility'
 
           test -n "${KDIR:-}"
           test -f "$KDIR/Makefile"
@@ -105,11 +109,14 @@ jobs:
           install -m 0644 kernelsu.ko "$GITHUB_WORKSPACE/out/$MODULE_NAME"
           sha256sum "$GITHUB_WORKSPACE/out/$MODULE_NAME" > "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
           {
-            echo "KernelSU Next commit: $KSU_COMMIT"
+            echo "KernelSU Next release: $KSU_RELEASE_TAG ($KSU_COMMIT)"
+            echo "Samsung late-load PR: #1507 merge $KSU_SAMSUNG_PR_MERGE_COMMIT"
+            echo "Samsung kernel commit: $KSU_SAMSUNG_KERNEL_COMMIT"
+            echo "Samsung userspace commit: $KSU_SAMSUNG_USERSPACE_COMMIT"
             echo "Target release: $TARGET_RELEASE"
             echo "Target KMI: $TARGET_KMI"
             echo "Kernel source: KernelSU Next kernel/"
-            echo "Samsung compatibility scope: kernel-only KDP/RKP/DEFEX layer"
+            echo "Samsung compatibility scope: upstream PR #1507 KDP/RKP/DEFEX late-load support"
             echo "Samsung no-patch-text mode: CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y"
             echo "Module section audit: this_module=$this_module_line"
             echo "Module section audit: printk_index=$printk_index_line"
@@ -211,9 +218,33 @@ jobs:
           git -C "$KSU_ROOT" apply --whitespace=nowarn \
             --include='userspace/ksud/src/late_load.rs' \
             --include='userspace/ksud/src/utils.rs' \
-            "$GITHUB_WORKSPACE/kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch"
+            "$GITHUB_WORKSPACE/kernelsu/patches/KernelSU-Next-v3.4.0-samsung-kdp-rkp-defex.patch"
 
-          # This is a build-metadata-only adjustment to Next build.rs.
+          git -C "$KSU_ROOT" fetch --no-tags origin \
+            "$KSU_SAMSUNG_KERNEL_COMMIT" \
+            "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          git -C "$KSU_ROOT" cherry-pick \
+            "$KSU_SAMSUNG_KERNEL_COMMIT" \
+            "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          git -C "$KSU_ROOT" log --format='%s' -2 | \
+            grep -Fxq 'fix: stage ksud before switching to late-loaded context'
+          git -C "$KSU_ROOT" log --format='%s' -2 | \
+            grep -Fxq 'feat: add Samsung KDP/RKP/DEFEX late-load compatibility'
+          grep -Fq 'stage_daemon' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
+          grep -Fq 'finish_install' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
+          grep -Fq 'CONFIG_KSU_SAMSUNG_KDP' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'CONFIG_KSU_SAMSUNG_RKP' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'CONFIG_KSU_SAMSUNG_DEFEX' "$KSU_ROOT/kernel/Kconfig"
+
+          version_code="$((30000 + $(git -C "$KSU_ROOT" rev-list --count HEAD)))"
+          {
+            echo "KSU_BUILD_VERSION_CODE=$version_code"
+            echo "KSU_BUILD_VERSION_NAME=3.4.0"
+            printf 'KSU_VERSION_MARKER=%s3.4.0\n' "$version_code"
+          } >> "$GITHUB_ENV"
+
+          # Keep the daemon's embedded metadata at the release version while
+          # retaining the two PR commits in the checked-out source history.
           python3 - "$KSU_ROOT/userspace/ksud/build.rs" <<'PY'
           from pathlib import Path
           import sys
@@ -224,7 +255,7 @@ jobs:
           function_prefix = """fn get_git_version() -> Result<(u32, String), std::io::Error> {
               match (env::var("KSU_BUILD_VERSION_CODE"), env::var("KSU_BUILD_VERSION_NAME")) {
                   (Ok(code), Ok(name)) => {
-                      let code = code.parse::<u32>().expect("Invalid KSU_BUILD_VERSION_CODE");
+                      let code = code.parse::<u32>().expect("Invalid KernelSU Next build version code");
                       if code == 0 || name.trim().is_empty() {
                           panic!("Invalid KernelSU Next build metadata");
                       }
@@ -235,7 +266,7 @@ jobs:
               }
           """
           if source.count(function_needle) != 1:
-              raise SystemExit("unexpected KernelSU Next build.rs layout")
+              raise SystemExit("unexpected v3.4.0 KernelSU Next build.rs layout")
           source = source.replace(function_needle, function_prefix, 1)
 
           main_needle = "fn main() {\n"
@@ -245,61 +276,10 @@ jobs:
               '    println!("cargo:rerun-if-env-changed=KSU_BUILD_VERSION_NAME");\n'
           )
           if source.count(main_needle) != 1:
-              raise SystemExit("unexpected KernelSU Next build.rs main layout")
+              raise SystemExit("unexpected v3.4.0 KernelSU Next build.rs main layout")
           source = source.replace(main_needle, main_prefix, 1)
           path.write_text(source)
           PY
-
-          cargo_toml="$KSU_ROOT/userspace/ksud/Cargo.toml"
-          python3 - "$cargo_toml" "$KSU_ROOT/userspace/ksud/Cargo.lock" "$KSU_ROOT/userspace/ksuinit/Cargo.toml" <<'PY'
-          from pathlib import Path
-          import sys
-
-          cargo_toml = Path(sys.argv[1])
-          cargo_lock = Path(sys.argv[2])
-          ksuinit_toml = Path(sys.argv[3])
-          source = cargo_toml.read_text()
-          old_java = 'java-properties = { git = "https://github.com/Kernel-SU/java-properties.git", branch = "master", default-features = false }'
-          new_java = 'java-properties = { version = "=2.0.0", default-features = false }'
-          if source.count(old_java) != 1:
-              raise SystemExit("unexpected java-properties dependency declaration")
-          source = source.replace(old_java, new_java, 1)
-
-          old_props = "https://github.com/Kernel-SU/ksu_props"
-          new_props = "https://github.com/ReSukiSU/ksu_props"
-          if source.count(old_props) != 1:
-              raise SystemExit("unexpected ksu_props dependency declaration")
-          cargo_toml.write_text(source.replace(old_props, new_props, 1))
-
-          lock_source = cargo_lock.read_text()
-          if old_props not in lock_source:
-              raise SystemExit("ksu_props source missing from Cargo.lock")
-          cargo_lock.write_text(lock_source.replace(old_props, new_props))
-          init_source = ksuinit_toml.read_text()
-          old_rustix = "https://github.com/Kernel-SU/rustix.git"
-          new_rustix = "https://github.com/ReSukiSU/rustix.git"
-          if init_source.count(old_rustix) != 1:
-              raise SystemExit("unexpected rustix dependency declaration")
-          ksuinit_toml.write_text(init_source.replace(old_rustix, new_rustix, 1))
-
-          lock_source = cargo_lock.read_text()
-          if old_rustix not in lock_source:
-              raise SystemExit("rustix source missing from Cargo.lock")
-          cargo_lock.write_text(lock_source.replace(old_rustix, new_rustix))
-          PY
-
-          export CARGO_NET_GIT_FETCH_WITH_CLI=true
-          cargo update --manifest-path "$cargo_toml" -p java-properties --precise 2.0.0
-
-          changed_paths="$(git -C "$KSU_ROOT" status --porcelain | sed -E 's/^.. //')"
-          bad_paths="$(printf '%s\n' "$changed_paths" | grep -Ev '^(userspace/ksud/(Cargo.lock|Cargo.toml|build.rs|src/late_load.rs|src/utils.rs)|userspace/ksuinit/Cargo.toml)$' || true)"
-          if [[ -n "$bad_paths" ]]; then
-            printf 'unexpected userspace changes after patching:\n%s\n' "$bad_paths"
-            exit 1
-          fi
-          for expected_path in userspace/ksud/Cargo.lock userspace/ksud/Cargo.toml userspace/ksud/build.rs userspace/ksud/src/late_load.rs userspace/ksud/src/utils.rs userspace/ksuinit/Cargo.toml; do
-            printf '%s\n' "$changed_paths" | grep -Fxq "$expected_path"
-          done
 
       - name: Verify and embed freshly built Next module
         run: |
@@ -316,10 +296,7 @@ jobs:
           install -m 0644 "$module" \
             "$KSU_ROOT/userspace/ksud/bin/aarch64/android14-6.1_kernelsu.ko"
 
-      - name: Build KernelSU Next 3.3.0 daemon
-        env:
-          KSU_BUILD_VERSION_CODE: "33214"
-          KSU_BUILD_VERSION_NAME: "3.3.0"
+      - name: Build KernelSU Next 3.4.0 daemon
         run: |
           set -euo pipefail
           KSU_ROOT="$RUNNER_TEMP/ksunext-userspace"
@@ -345,7 +322,7 @@ jobs:
           test "$(stat -c %s "$daemon")" -gt 3000000
           strings "$daemon" | grep -Fq 'KernelSU Next'
           strings "$daemon" | grep -Fq 'com.rifsxd.ksunext'
-          strings "$daemon" | grep -Fq '332143.3.0'
+          strings "$daemon" | grep -Fq "$KSU_VERSION_MARKER"
           strings "$daemon" | grep -Fq 'Failed to stage ksud'
           strings "$daemon" | grep -Fq 'Failed to finish ksud installation'
           if strings "$daemon" | grep -Fq 'Restarting KernelSU Next Manager'; then
@@ -422,13 +399,15 @@ jobs:
           test -s "$exploit"
           cp "$exploit" dist/cve-2026-43499-app.so
           sha256sum "$daemon" "$module" "$exploit" > dist/SHA256SUMS
-          patch_sha="$(sha256sum kernelsu/patches/KernelSU-Next-v3.3.0-samsung-kdp-rkp-defex.patch | cut -d' ' -f1)"
           {
-            echo "KernelSU Next commit: $KSU_COMMIT"
+            echo "KernelSU Next release: $KSU_RELEASE_TAG ($KSU_COMMIT)"
+            echo "Samsung late-load PR: #1507 merge $KSU_SAMSUNG_PR_MERGE_COMMIT"
+            echo "Samsung kernel commit: $KSU_SAMSUNG_KERNEL_COMMIT"
+            echo "Samsung userspace commit: $KSU_SAMSUNG_USERSPACE_COMMIT"
             echo "Target release: $TARGET_RELEASE"
             echo "Target KMI: $TARGET_KMI"
-            echo "Kernel compatibility scope: kernel-only Samsung KDP/RKP/DEFEX patch"
-            echo "Userspace scope: exact Next late-load with synchronous S928 staging patch"
+            echo "Kernel compatibility scope: upstream PR #1507 KDP/RKP/DEFEX late-load support"
+            echo "Userspace scope: upstream PR #1507 stage-before-late-load fix"
             echo "Userspace metadata scope: build.rs version override only"
             echo "Userspace dependency compatibility: registry java-properties; exact ksu_props and rustix commits via public mirrors"
             echo "Samsung patch file SHA-256: $patch_sha"
@@ -469,7 +448,7 @@ jobs:
           payload_id = "e3q-S928USQU6ZZI4"
           entry = {
               "payloadId": payload_id,
-              "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZI4 | Kernel 6.1.162 | KernelSU Next 3.3.0",
+              "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZI4 | Kernel 6.1.162 | KernelSU Next 3.4.0",
               "models": ["SM-S928U1"],
               "kernelVersions": ["6.1.162"],
               "exploit": {
@@ -477,7 +456,7 @@ jobs:
                   "size": exploit_size
               },
               "kernelsu": {
-                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.3.0",
+                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.4.0",
                   "size": daemon_size
               }
           }
