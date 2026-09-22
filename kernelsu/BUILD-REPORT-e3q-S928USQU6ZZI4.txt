@@ -5,12 +5,13 @@ Samsung userspace commit: 00a165704e9330bca4db6838e63555153edbe01a
 Target release: 6.1.162-android14-11-34343818-abS928USQU6ZZI4
 Target KMI: android14-6.1
 Kernel compatibility scope: upstream PR #1507 KDP/RKP/DEFEX late-load support
-Userspace scope: upstream PR #1507 stage-before-late-load fix
+Userspace scope: upstream PR #1507 staging plus synchronous Root My Galaxy handoff
+Root My Galaxy integration: no late-load double-fork or pre-verification Manager restart
 Userspace metadata scope: build.rs version override only
 Userspace dependency compatibility: exact KernelSU Next v3.4.0 KernelSU2 dependency graph
 Exploit route: upstream legacy S928 engine commit 139c6dad8cc81be7f4ab2ef03c6a1463cd60f000 with ZZI4 target constants
 Support feed: exact SM-S928U1 + kernel 6.1.162 automatic test match
 Publication: GitHub raw downloads configured for the app test feed
-9a8c67e6692dd6f75bad1ce2220e06fb7d8e958d8b8aa48b462c1e50a8354713  dist/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.4.0
-14f25b025864f3e590fe9ac8cd2cd31eee668c3b2a963e61ceace9b39189a5d8  /home/runner/work/Root-My-Galaxy-Payloads/Root-My-Galaxy-Payloads/out/android14-6.1_kernelsu-e3q-S928USQU6ZZI4-kdp.ko
+523456c16f746bc8129919d3f2b99f946d32dc9372aacb645a505d09e2d9e548  dist/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.4.0
+7dd3a1e26133015697221eede94b2a4f0cebeebd871381cbf6ad282a9b8d8a17  /home/runner/work/Root-My-Galaxy-Payloads/Root-My-Galaxy-Payloads/out/android14-6.1_kernelsu-e3q-S928USQU6ZZI4-kdp.ko
 c0b1d82316e5a950e569e6fbbb3881800fbc3726b22f0d3ebcf74158361a908d  artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so
