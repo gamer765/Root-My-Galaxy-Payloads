@@ -21,31 +21,23 @@ if "SUSFS_SAMSUNG_SAFE_TEST" not in source:
  * upstream LKM layers below use ksu_patch_text() against those protected
  * locations, so treating a write refusal as a normal load failure is not
  * enough: the attempted path itself has already been observed to crash this
- * device.  The test build therefore defaults to the kprobe-only baseline.
+ * device.  The test build therefore defaults to a probe-free load-isolation mode.
  */
 #define SUSFS_SAMSUNG_SAFE_TEST 1
 static bool samsung_safe = true;
 module_param_named(samsung_safe, samsung_safe, bool, 0600);
 MODULE_PARM_DESC(samsung_safe,
-                 "Samsung-safe mode: skip LSM and syscall-table patch layers");
+                 "Samsung-safe probe-free load-isolation mode");
 
-static bool susfs_samsung_unsafe_layer(const char *name)
-{
-    return !strcmp(name, "lsm_hook") ||
-           !strcmp(name, "sus_path") ||
-           !strcmp(name, "opath") ||
-           !strcmp(name, "kstat");
-}
 '''
     if source.count(marker) != 1:
         raise SystemExit("unexpected susfs_main.c fail_layer layout")
     source = source.replace(marker, marker + addition, 1)
 
     armed_marker = "        susfs_layers[i].armed = true;\n"
-    safe_gate = r'''        if (samsung_safe &&
-            susfs_samsung_unsafe_layer(susfs_layers[i].name)) {
+    safe_gate = r'''        if (samsung_safe) {
             pr_warn("susfs_guard_lkm: samsung_safe=1 - %s disabled "
-                    "(protected LSM/syscall-table write path)\n",
+                    "(probe-free load-isolation mode)\n",
                     susfs_layers[i].name);
             susfs_layers[i].armed = false;
             continue;

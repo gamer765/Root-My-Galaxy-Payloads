@@ -197,7 +197,7 @@ jobs:
             echo "Module section audit: printk_index=$printk_index_line"
             echo "Userspace source: not involved in module build"
             echo "Module provenance: freshly built from Next source; no prebuilt module copied"
-            echo "SUSFS guard: freshly built from the same DDK/KMI; Samsung-safe layer gate enabled"
+            echo "SUSFS guard: freshly built from the same DDK/KMI; Samsung-safe probe-free load-isolation mode"
             echo "Support feed: manual-only SUSFS test entry; automatic selection remains the working 3.4.2 entry"
             cat "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
           } > "$GITHUB_WORKSPACE/out/MODULE-BUILD-REPORT.txt"
@@ -581,8 +581,8 @@ jobs:
             echo "Kernel compatibility scope: upstream PR #1507 KDP/RKP/DEFEX late-load support"
             echo "Userspace scope: upstream PR #1507 staging plus synchronous Root My Galaxy handoff"
             echo "Root My Galaxy integration: no late-load double-fork or pre-verification Manager restart"
-            echo "SUSFS Samsung-safe scope: skips LSM/syscall-table patch layers; kprobe-only baseline remains available"
-            echo "SUSFS Manager behavior: load() passes samsung_safe=1 and the module defaults to safe mode"
+            echo "SUSFS Samsung-safe scope: probe-free load-isolation mode; no SUSFS runtime layer is registered"
+            echo "SUSFS Manager behavior: load() passes samsung_safe=1 and the module defaults to probe-free mode"
             echo "Userspace metadata scope: build.rs version override only"
             echo "Userspace dependency compatibility: exact KernelSU Next v3.4.2 KernelSU2 dependency graph"
             echo "Exploit route: upstream legacy S928 engine commit $LEGACY_ENGINE_COMMIT with ZZI4 target constants"
@@ -641,7 +641,7 @@ jobs:
               raise SystemExit(f"working 3.4.0 fallback URL changed: {fallback_url}")
           entry = {
               "payloadId": payload_id,
-              "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZI4 | Kernel 6.1.162 | KernelSU Next 3.4.2 | Samsung-safe SUSFS test",
+              "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZI4 | Kernel 6.1.162 | KernelSU Next 3.4.2 | Samsung-safe SUSFS load-isolation test",
               "models": ["SM-S928U1"],
               "kernelVersions": ["6.1.162"],
               "manualOnly": True,

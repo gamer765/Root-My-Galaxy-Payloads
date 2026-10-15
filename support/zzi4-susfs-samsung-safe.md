@@ -9,16 +9,12 @@ The daemon embeds both the target KernelSU Next module and the matching
 android14-6.1 SUSFS guard LKM. The guard defaults to `samsung_safe=1`, and
 the Manager-triggered `ksud susfs load` path passes the same parameter.
 
-Samsung-safe mode disables the SUSFS layers that write protected LSM or
-syscall-table locations:
+In this revision, Samsung-safe mode is deliberately probe-free: it skips every
+SUSFS runtime layer, including the LSM/syscall-table writers, the reboot
+supercall, symbol-hiding probes, and feature kprobes. This is a load-isolation
+test only; it does not advertise usable SUSFS features yet.
 
-- `lsm_hook`
-- `sus_path`
-- `opath`
-- `kstat`
-
-The remaining kprobe-based baseline is built against the exact ZZI4 KMI. This
-is intentionally a compatibility test, not a claim that every upstream SUSFS
-feature is available on this Samsung kernel. Do not enable automatic SUSFS
-autoload until the device survives a manual load and the feature report is
-reviewed.
+If this profile loads without a freeze, the next build can add one compatible
+hook family at a time. Do not enable automatic SUSFS autoload or treat this
+profile as a functional SUSFS deployment until the device survives the load
+and the feature report is reviewed.
