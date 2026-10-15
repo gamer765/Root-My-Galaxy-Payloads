@@ -1,4 +1,5 @@
 name: Build ZZI4 KernelSU Next 3.4.2 Samsung-safe SUSFS test pair
+# Publish branch is based on the current main lineage.
 
 on:
   push:
