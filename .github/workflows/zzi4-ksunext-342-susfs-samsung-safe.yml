@@ -705,6 +705,8 @@ jobs:
             echo "The separate Samsung-safe SUSFS ZZI4 entry is already published."
           else
             git commit -m "Publish ZZI4 KernelSU Next 3.4.2 Samsung-safe SUSFS test payload"
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           fi
 
