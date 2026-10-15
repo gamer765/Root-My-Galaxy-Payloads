@@ -1,5 +1,4 @@
 name: Build ZZI4 KernelSU Next 3.4.2 Samsung-safe SUSFS test pair
-# Publish branch is based on the current main lineage.
 
 on:
   push:
@@ -707,7 +706,7 @@ jobs:
           else
             git commit -m "Publish ZZI4 KernelSU Next 3.4.2 Samsung-safe SUSFS test payload"
             git fetch origin main
-            if git merge --no-edit origin/main; then
+            if git merge --allow-unrelated-histories --no-edit origin/main; then
               :
             else
               while IFS= read -r -d '' conflict_path; do
