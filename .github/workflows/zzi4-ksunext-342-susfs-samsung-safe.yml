@@ -489,6 +489,7 @@ jobs:
           set -euo pipefail
           daemon="dist/$DAEMON_NAME"
           module="$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          susfs_module="$GITHUB_WORKSPACE/out/$SUSFS_MODULE_NAME"
           file "$daemon"
           test "$(stat -c %s "$daemon")" -gt 3000000
           strings "$daemon" | grep -Fq 'KernelSU Next'
@@ -698,7 +699,7 @@ jobs:
             "kernelsu/$DAEMON_NAME" \
             kernelsu/BUILD-REPORT-e3q-S928USQU6ZZI4-ksun-3.4.2-susfs-samsung-safe.txt \
             kernelsu/SHA256SUMS-e3q-S928USQU6ZZI4-ksun-3.4.2-susfs-samsung-safe.txt \
-            "kernelsu/$SUSFS_MODULE_NAME"
+            "kernelsu/$SUSFS_MODULE_NAME" \
             support/targets-v3.json
           if git diff --cached --quiet; then
             echo "The separate Samsung-safe SUSFS ZZI4 entry is already published."

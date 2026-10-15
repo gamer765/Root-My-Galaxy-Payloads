@@ -6,7 +6,7 @@ matching continues to select the known-good daemon; advanced/manual selection
 is required to choose this profile.
 
 The daemon embeds both the target KernelSU Next module and the matching
-android14-6.1 SUSFS guard LKM. The guard defaults to `samsung_safe=1), and
+android14-6.1 SUSFS guard LKM. The guard defaults to `samsung_safe=1`, and
 the Manager-triggered `ksud susfs load` path passes the same parameter.
 
 Samsung-safe mode disables the SUSFS layers that write protected LSM or
