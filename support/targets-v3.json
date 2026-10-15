@@ -212,6 +212,25 @@
       }
     },
     {
+      "payloadId": "e3q-S928USQU6ZZI4-ksun-3.4.2-susfs-samsung-safe",
+      "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZI4 | Kernel 6.1.162 | KernelSU Next 3.4.2 | Samsung-safe SUSFS test",
+      "models": [
+        "SM-S928U1"
+      ],
+      "kernelVersions": [
+        "6.1.162"
+      ],
+      "manualOnly": true,
+      "exploit": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so",
+        "size": 104128
+      },
+      "kernelsu": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.4.2-susfs-samsung-safe",
+        "size": 4370720
+      }
+    },
+    {
       "payloadId": "e3q-S928USQU6ZZI4",
       "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZI4 | Kernel 6.1.162 | KernelSU Next 3.4.0",
       "models": [
