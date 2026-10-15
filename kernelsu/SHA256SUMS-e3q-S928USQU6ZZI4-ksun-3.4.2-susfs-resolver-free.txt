@@ -1,0 +1,4 @@
+3b507193a11fc41318b3d6f10e3e2b58067d45d5b680691d92e858b5c8abb77f  dist/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.4.2-susfs-resolver-free
+a28fcd816264bbc73f55949360d7c1049c4629c07671a91114352f1bf5ecb7fb  /home/runner/work/Root-My-Galaxy-Payloads/Root-My-Galaxy-Payloads/out/android14-6.1_kernelsu-e3q-S928USQU6ZZI4-kdp-3.4.2.ko
+7e7cc54ef90e662dfe7f63dab18ac39631b115151faa96d09ad8add24e21aed8  /home/runner/work/Root-My-Galaxy-Payloads/Root-My-Galaxy-Payloads/out/android14-6.1_susfs_guard_lkm-e3q-S928USQU6ZZI4-resolver-free.ko
+c0b1d82316e5a950e569e6fbbb3881800fbc3726b22f0d3ebcf74158361a908d  artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so
