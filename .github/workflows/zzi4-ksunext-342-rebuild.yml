@@ -51,9 +51,55 @@ jobs:
             "$KSU_SAMSUNG_USERSPACE_COMMIT"
           git -C "$KSU_ROOT" config user.name "Root My Galaxy CI"
           git -C "$KSU_ROOT" config user.email "ci@rootmygalaxy.invalid"
-          git -C "$KSU_ROOT" cherry-pick \
-            "$KSU_SAMSUNG_KERNEL_COMMIT" \
-            "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          # PR #1507 is based on an older KernelSU Next dev history. The 3.4.2
+          # tag has two moved integration files, so resolve those two files by
+          # retaining the current 3.4.2 code and adding the PR's Samsung hooks.
+          set +e
+          git -C "$KSU_ROOT" cherry-pick "$KSU_SAMSUNG_KERNEL_COMMIT"
+          kernel_pick_rc=$?
+          set -e
+          if [[ "$kernel_pick_rc" -ne 0 ]]; then
+            python3 - "$KSU_ROOT" <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+
+          init_path = root / "kernel/core/init.c"
+          init = init_path.read_text()
+          start = init.index("<<<<<<< HEAD")
+          separator = init.index("\n=======\n", start)
+          end = init.index("\n>>>>>>>", separator)
+          end_line = init.index("\n", end + 1)
+          head_block = init[start + len("<<<<<<< HEAD\n"):separator]
+          if "#ifdef KSU_MANAGER_PACKAGE" not in head_block:
+              raise SystemExit("unexpected init.c conflict layout")
+          init = init[:start] + "\tint ret;\n\n" + head_block + "\n" + init[end_line + 1:]
+          init_path.write_text(init)
+
+          manager_path = root / "kernel/hook/syscall_hook_manager.c"
+          manager = manager_path.read_text()
+          start = manager.index("<<<<<<< HEAD")
+          separator = manager.index("\n=======\n", start)
+          end = manager.index("\n>>>>>>>", separator)
+          end_line = manager.index("\n", end + 1)
+          head_block = manager[start + len("<<<<<<< HEAD\n"):separator]
+          pr_block = manager[separator + len("\n=======\n"):end]
+          if "#include \"hook/riscv64/syscall_regs.h\"" not in head_block:
+              raise SystemExit("unexpected syscall_hook_manager.c current-code conflict layout")
+          if '#include "compat/samsung_rkp.h"' not in pr_block:
+              raise SystemExit("unexpected syscall_hook_manager.c PR conflict layout")
+          manager = manager[:start] + head_block + "\n" + pr_block + manager[end_line + 1:]
+          manager_path.write_text(manager)
+          PY
+            git -C "$KSU_ROOT" add               kernel/core/init.c               kernel/hook/syscall_hook_manager.c
+            GIT_EDITOR=true git -C "$KSU_ROOT" cherry-pick --continue
+          fi
+          git -C "$KSU_ROOT" cherry-pick "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          if grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)'               "$KSU_ROOT/kernel/core/init.c"               "$KSU_ROOT/kernel/hook/syscall_hook_manager.c"; then
+            echo "unresolved PR #1507 conflict markers remain"
+            exit 1
+          fi
           git -C "$KSU_ROOT" log --format='%s' -2 > \
             "$RUNNER_TEMP/ksunext-pr-commits.txt"
           grep -Fxq 'fix: stage ksud before switching to late-loaded context' \
@@ -221,9 +267,55 @@ jobs:
             "$KSU_SAMSUNG_USERSPACE_COMMIT"
           git -C "$KSU_ROOT" config user.name "Root My Galaxy CI"
           git -C "$KSU_ROOT" config user.email "ci@rootmygalaxy.invalid"
-          git -C "$KSU_ROOT" cherry-pick \
-            "$KSU_SAMSUNG_KERNEL_COMMIT" \
-            "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          # PR #1507 is based on an older KernelSU Next dev history. The 3.4.2
+          # tag has two moved integration files, so resolve those two files by
+          # retaining the current 3.4.2 code and adding the PR's Samsung hooks.
+          set +e
+          git -C "$KSU_ROOT" cherry-pick "$KSU_SAMSUNG_KERNEL_COMMIT"
+          kernel_pick_rc=$?
+          set -e
+          if [[ "$kernel_pick_rc" -ne 0 ]]; then
+            python3 - "$KSU_ROOT" <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+
+          init_path = root / "kernel/core/init.c"
+          init = init_path.read_text()
+          start = init.index("<<<<<<< HEAD")
+          separator = init.index("\n=======\n", start)
+          end = init.index("\n>>>>>>>", separator)
+          end_line = init.index("\n", end + 1)
+          head_block = init[start + len("<<<<<<< HEAD\n"):separator]
+          if "#ifdef KSU_MANAGER_PACKAGE" not in head_block:
+              raise SystemExit("unexpected init.c conflict layout")
+          init = init[:start] + "\tint ret;\n\n" + head_block + "\n" + init[end_line + 1:]
+          init_path.write_text(init)
+
+          manager_path = root / "kernel/hook/syscall_hook_manager.c"
+          manager = manager_path.read_text()
+          start = manager.index("<<<<<<< HEAD")
+          separator = manager.index("\n=======\n", start)
+          end = manager.index("\n>>>>>>>", separator)
+          end_line = manager.index("\n", end + 1)
+          head_block = manager[start + len("<<<<<<< HEAD\n"):separator]
+          pr_block = manager[separator + len("\n=======\n"):end]
+          if "#include \"hook/riscv64/syscall_regs.h\"" not in head_block:
+              raise SystemExit("unexpected syscall_hook_manager.c current-code conflict layout")
+          if '#include "compat/samsung_rkp.h"' not in pr_block:
+              raise SystemExit("unexpected syscall_hook_manager.c PR conflict layout")
+          manager = manager[:start] + head_block + "\n" + pr_block + manager[end_line + 1:]
+          manager_path.write_text(manager)
+          PY
+            git -C "$KSU_ROOT" add               kernel/core/init.c               kernel/hook/syscall_hook_manager.c
+            GIT_EDITOR=true git -C "$KSU_ROOT" cherry-pick --continue
+          fi
+          git -C "$KSU_ROOT" cherry-pick "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          if grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)'               "$KSU_ROOT/kernel/core/init.c"               "$KSU_ROOT/kernel/hook/syscall_hook_manager.c"; then
+            echo "unresolved PR #1507 conflict markers remain"
+            exit 1
+          fi
           git -C "$KSU_ROOT" log --format='%s' -2 > \
             "$RUNNER_TEMP/ksunext-pr-commits.txt"
           grep -Fxq 'fix: stage ksud before switching to late-loaded context' \
