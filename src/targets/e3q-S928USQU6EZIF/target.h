@@ -10,7 +10,7 @@
 
 #ifndef BUILD_FINGERPRINT
 #define BUILD_FINGERPRINT \
-  "samsung/e3quew/e3q:17/ZZI4/S928USQU6EZIF:user/release-keys"
+  "samsung/e3qsqw/e3q:17/CP2A.260605.016/S928U1UEU6EZIF:user/release-keys"
 #endif
 
 #define KIMAGE_TEXT_BASE 0xffffffc008000000ULL
