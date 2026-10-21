@@ -212,6 +212,24 @@
       }
     },
     {
+      "payloadId": "e3q-S928USQU6EZIF-ksun-3.4.2-lateload-sync",
+      "displayName": "Galaxy S24 Ultra SM-S928U1 | EZIF | Kernel 6.1.162 | KernelSU Next samsung-lateload-sync test",
+      "models": [
+        "SM-S928U1"
+      ],
+      "kernelVersions": [
+        "6.1.162"
+      ],
+      "exploit": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/ksun-samsung-lateload-sync-ezif/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
+        "size": 104128
+      },
+      "kernelsu": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/ksun-samsung-lateload-sync-ezif/kernelsu/ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2-lateload-sync",
+        "size": 4254920
+      }
+    },
+    {
       "payloadId": "e3q-S928USQU6ZZI4",
       "displayName": "Galaxy S24 Ultra SM-S928U1 | ZZI4 | Kernel 6.1.162 | KernelSU Next 3.4.0",
       "models": [
