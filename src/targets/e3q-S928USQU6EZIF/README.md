@@ -37,5 +37,6 @@ The completed branch build produced:
 - KernelSU-Next daemon: 4,179,384 bytes,
   `3bfe39976c35a3d737bcb2e485f103cd30c8586b67fbc7cbfd696b4af7ecc649`
 
-The artifacts are published on branch `ezif-ksun-342`. The automatic support
-feed remains unchanged pending hardware validation of this exact pair.
+An isolated EZIF test entry is present in the branch copy of
+`support/targets-v3.json`. The confirmed main feed is unchanged pending
+hardware validation of this exact pair.
