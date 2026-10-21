@@ -54,6 +54,6 @@ The EZIF branch workflow completed successfully:
 | android14-6.1 module | 557,168 bytes | `6935477d3be20281bbc223584cb18d553b677c73c54af3c368fc220ce687752d` |
 | KernelSU-Next daemon | 4,179,384 bytes | `3bfe39976c35a3d737bcb2e485f103cd30c8586b67fbc7cbfd696b4af7ecc649` |
 
-The EZIF branch deliberately excludes SUSFS and regular KernelSU variants. The
-workflow does not alter `support/targets-v3.json`; feed publication remains
-pending hardware validation of this exact pair.
+The branch copy of `support/targets-v3.json` contains an isolated EZIF test
+entry. The confirmed main feed remains unchanged, and SUSFS/regular KernelSU
+variants are excluded pending hardware validation of this exact pair.
