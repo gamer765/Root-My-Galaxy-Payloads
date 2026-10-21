@@ -1,0 +1,585 @@
+name: Build EZIF pure KernelSU Next test pair
+
+on:
+  push:
+    branches: [ezif-ksun-342]
+    paths:
+      - ".github/workflows/ezif-ksunext-342-rebuild.yml"
+      - "Makefile"
+      - "src/slide_app.c"
+      - "src/targets/e3q-S928USQU6EZIF/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  KSU_RELEASE_TAG: v3.4.2
+  KSU_COMMIT: 4c706b5938665866ebe16944a481a7b91e3396af
+  KSU_SAMSUNG_KERNEL_COMMIT: b62019e7ac452d73f3198e0f4cc60963d18d3283
+  KSU_SAMSUNG_USERSPACE_COMMIT: 00a165704e9330bca4db6838e63555153edbe01a
+  KSU_SAMSUNG_PR_MERGE_COMMIT: b8dafae390eba00cba9983e8ef1e1eaad74ba4ed
+  LEGACY_ENGINE_COMMIT: 139c6dad8cc81be7f4ab2ef03c6a1463cd60f000
+  TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
+  TARGET_KMI: android14-6.1
+  MODULE_NAME: android14-6.1_kernelsu-e3q-S928USQU6EZIF-kdp-3.4.2.ko
+  DAEMON_NAME: ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2
+
+jobs:
+  build-module:
+    name: Build pure KernelSU Next EZIF module
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
+      options: --privileged
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+
+      - name: Build module from exact KernelSU Next kernel source
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          KSU_ROOT="$RUNNER_TEMP/ksunext-module"
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git "$KSU_ROOT"
+          git config --global --add safe.directory "$KSU_ROOT"
+          git -C "$KSU_ROOT" checkout --detach "$KSU_COMMIT"
+          test "$(git -C "$KSU_ROOT" rev-parse HEAD)" = "$KSU_COMMIT"
+
+          git -C "$KSU_ROOT" fetch --no-tags origin \
+            "$KSU_SAMSUNG_KERNEL_COMMIT" \
+            "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          git -C "$KSU_ROOT" config user.name "Root My Galaxy CI"
+          git -C "$KSU_ROOT" config user.email "ci@rootmygalaxy.invalid"
+          # PR #1507 is based on an older KernelSU Next dev history. The 3.4.2
+          # tag has two moved integration files, so resolve those two files by
+          # retaining the current 3.4.2 code and adding the PR's Samsung hooks.
+          set +e
+          git -C "$KSU_ROOT" cherry-pick "$KSU_SAMSUNG_KERNEL_COMMIT"
+          kernel_pick_rc=$?
+          set -e
+          if [[ "$kernel_pick_rc" -ne 0 ]]; then
+            python3 - "$KSU_ROOT" <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+
+          init_path = root / "kernel/core/init.c"
+          init = init_path.read_text()
+          start = init.index("<<<<<<< HEAD")
+          separator = init.index("\n=======\n", start)
+          end = init.index("\n>>>>>>>", separator)
+          end_line = init.index("\n", end + 1)
+          head_block = init[start + len("<<<<<<< HEAD\n"):separator]
+          if "#ifdef KSU_MANAGER_PACKAGE" not in head_block:
+              raise SystemExit("unexpected init.c conflict layout")
+          init = init[:start] + "\tint ret;\n\n" + head_block + "\n" + init[end_line + 1:]
+          init_path.write_text(init)
+
+          manager_path = root / "kernel/hook/syscall_hook_manager.c"
+          manager = manager_path.read_text()
+          start = manager.index("<<<<<<< HEAD")
+          separator = manager.index("\n=======\n", start)
+          end = manager.index("\n>>>>>>>", separator)
+          end_line = manager.index("\n", end + 1)
+          head_block = manager[start + len("<<<<<<< HEAD\n"):separator]
+          pr_block = manager[separator + len("\n=======\n"):end]
+          if "#include \"hook/riscv64/syscall_regs.h\"" not in head_block:
+              raise SystemExit("unexpected syscall_hook_manager.c current-code conflict layout")
+          if '#include "compat/samsung_rkp.h"' not in pr_block:
+              raise SystemExit("unexpected syscall_hook_manager.c PR conflict layout")
+          manager = manager[:start] + head_block + "\n" + pr_block + manager[end_line + 1:]
+          manager_path.write_text(manager)
+          PY
+            git -C "$KSU_ROOT" add               kernel/core/init.c               kernel/hook/syscall_hook_manager.c
+            GIT_EDITOR=true git -C "$KSU_ROOT" cherry-pick --continue
+          fi
+          git -C "$KSU_ROOT" cherry-pick "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          if grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)'               "$KSU_ROOT/kernel/core/init.c"               "$KSU_ROOT/kernel/hook/syscall_hook_manager.c"; then
+            echo "unresolved PR #1507 conflict markers remain"
+            exit 1
+          fi
+          git -C "$KSU_ROOT" log --format='%s' -2 > \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+          grep -Fxq 'fix: stage ksud before switching to late-loaded context' \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+          grep -Fxq 'feat: add Samsung KDP/RKP/DEFEX late-load compatibility' \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+
+          test -n "${KDIR:-}"
+          test -f "$KDIR/Makefile"
+          test -f "$KDIR/include/generated/utsrelease.h"
+          test -f "$KDIR/include/config/kernel.release"
+
+          sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' \
+            "$KDIR/include/generated/utsrelease.h"
+          printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
+          grep -Fq "$TARGET_RELEASE" "$KDIR/include/generated/utsrelease.h"
+          grep -Fq "$TARGET_RELEASE" "$KDIR/include/config/kernel.release"
+
+          cd "$KSU_ROOT/kernel"
+          set +e
+          make -C "$KDIR" \
+            M="$KSU_ROOT/kernel" \
+            src="$KSU_ROOT/kernel" \
+            modules \
+            -j"$(nproc)" \
+            KERNELRELEASE="$TARGET_RELEASE" \
+            CONFIG_KSU=m \
+            CONFIG_KSU_SAMSUNG_KDP=y \
+            CONFIG_KSU_SAMSUNG_RKP=y \
+            CONFIG_KSU_SAMSUNG_DEFEX=y \
+            CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y \
+            SKIP_BTF=1 \
+            KCFLAGS="-fno-stack-protector" \
+            CC=clang
+          build_rc=$?
+          set -e
+          if [[ "$build_rc" -ne 0 && ! -s kernelsu.ko ]]; then
+            exit "$build_rc"
+          fi
+
+          test -s kernelsu.ko
+          llvm-strip -d kernelsu.ko
+          llvm-readelf -p .modinfo kernelsu.ko > /tmp/ezif-modinfo.txt
+          llvm-readelf -SW kernelsu.ko > /tmp/ezif-sections.txt
+          llvm-nm -a kernelsu.ko > /tmp/ezif-symbols.txt
+
+          grep -Fq "$TARGET_RELEASE" /tmp/ezif-modinfo.txt
+          grep -Eq '__versions.* 000000 ' /tmp/ezif-sections.txt
+          this_module_line="$(grep 'gnu.linkonce.this_module ' /tmp/ezif-sections.txt || true)"
+          printk_index_line="$(grep '\.printk_index ' /tmp/ezif-sections.txt || true)"
+          grep -Eq ' [A-Za-z] do_get_version_tag$' /tmp/ezif-symbols.txt
+          grep -Eq ' [A-Za-z] ksu_avc_spoof_enable$' /tmp/ezif-symbols.txt
+          grep -Eq ' [A-Za-z] ksu_samsung_kdp_init$' /tmp/ezif-symbols.txt
+          grep -Eq ' [A-Za-z] ksu_samsung_defex_init$' /tmp/ezif-symbols.txt
+
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          install -m 0644 kernelsu.ko "$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          sha256sum "$GITHUB_WORKSPACE/out/$MODULE_NAME" > "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
+          {
+            echo "KernelSU Next release: $KSU_RELEASE_TAG ($KSU_COMMIT)"
+            echo "Samsung late-load PR: #1507 merge $KSU_SAMSUNG_PR_MERGE_COMMIT"
+            echo "Samsung kernel commit: $KSU_SAMSUNG_KERNEL_COMMIT"
+            echo "Samsung userspace commit: $KSU_SAMSUNG_USERSPACE_COMMIT"
+            echo "Target release: $TARGET_RELEASE"
+            echo "Target KMI: $TARGET_KMI"
+            echo "Kernel source: KernelSU Next kernel/"
+            echo "Samsung compatibility scope: upstream PR #1507 KDP/RKP/DEFEX late-load support"
+            echo "Samsung no-patch-text mode: CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y"
+            echo "Module section audit: this_module=$this_module_line"
+            echo "Module section audit: printk_index=$printk_index_line"
+            echo "Userspace source: not involved in module build"
+            echo "Module provenance: freshly built from Next source; no prebuilt module copied"
+            echo "Support feed: not enabled; hardware validation pending"
+            cat "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
+          } > "$GITHUB_WORKSPACE/out/MODULE-BUILD-REPORT.txt"
+
+      - name: Upload pure KernelSU Next module for audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ezif-kernelsu-next-342-pure-module
+          path: out/
+
+  build-daemon:
+    name: Build pure KernelSU Next ksud
+    needs: build-module
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+
+      - name: Download pure KernelSU Next module
+        uses: actions/download-artifact@v4
+        with:
+          name: ezif-kernelsu-next-342-pure-module
+          path: out
+
+      - name: Install host build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang lld llvm
+
+      - name: Install Android NDK r29
+        run: |
+          set -euo pipefail
+          NDK_ROOT="$RUNNER_TEMP/android-ndk-r29"
+          ARCHIVE="$RUNNER_TEMP/android-ndk-r29-linux.zip"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --output "$ARCHIVE" \
+            "https://dl.google.com/android/repository/android-ndk-r29-linux.zip"
+          unzip -q -o "$ARCHIVE" -d "$RUNNER_TEMP"
+          test -x "$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          echo "ANDROID_NDK_ROOT=$NDK_ROOT" >> "$GITHUB_ENV"
+
+
+      - name: Rebuild legacy S928 EZIF app payload
+        run: |
+          set -euo pipefail
+          LEGACY_ROOT="$RUNNER_TEMP/root-my-galaxy-legacy-s928"
+          git clone --no-checkout \
+            https://github.com/BuSung-dev/Root-My-Galaxy-Payloads.git \
+            "$LEGACY_ROOT"
+          git config --global --add safe.directory "$LEGACY_ROOT"
+          git -C "$LEGACY_ROOT" checkout --detach "$LEGACY_ENGINE_COMMIT"
+          test "$(git -C "$LEGACY_ROOT" rev-parse HEAD)" = "$LEGACY_ENGINE_COMMIT"
+
+          target_dir="$LEGACY_ROOT/src/targets/e3q-S928USQU6EZIF"
+          mkdir -p "$target_dir"
+          install -m 0644 \
+            "$GITHUB_WORKSPACE/src/targets/e3q-S928USQU6EZIF/target.h" \
+            "$target_dir/target.h"
+          install -m 0644 \
+            "$GITHUB_WORKSPACE/src/targets/e3q-S928USQU6EZIF/p0_fingerprint.h" \
+            "$target_dir/p0_fingerprint.h"
+
+          make -C "$LEGACY_ROOT" \
+            TARGET=e3q-S928USQU6EZIF \
+            ANDROID_NDK_HOME="$ANDROID_NDK_ROOT" \
+            stable
+          built="$LEGACY_ROOT/build/e3q-S928USQU6EZIF/cve-2026-43499-app.stable.so"
+          payload="artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so"
+          test "$(stat -c %s "$built")" -eq 104128
+          llvm-readelf -h "$built" | grep -Fq "AArch64"
+          # Verify the pinned source lineage directly; the fixed-size stable ELF may
+          # truncate optional logging strings after linking.
+          grep -Fq 'slide=pselect main=pselect' "$LEGACY_ROOT/src/util.c"
+          grep -Fq 'APP_S928_STABLE_RACE' "$LEGACY_ROOT/src/slide_app.c"
+          grep -Fq 'PSELECT_ROUTE_NFDS' "$LEGACY_ROOT/src/slide_app.c"
+          install -m 0644 "$built" "$payload"
+          sha256sum "$payload"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Fetch exact KernelSU Next userspace source
+        run: |
+          set -euo pipefail
+          KSU_ROOT="$RUNNER_TEMP/ksunext-userspace"
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git "$KSU_ROOT"
+          git config --global --add safe.directory "$KSU_ROOT"
+          git -C "$KSU_ROOT" checkout --detach "$KSU_COMMIT"
+          test "$(git -C "$KSU_ROOT" rev-parse HEAD)" = "$KSU_COMMIT"
+
+          git -C "$KSU_ROOT" fetch --no-tags origin \
+            "$KSU_SAMSUNG_KERNEL_COMMIT" \
+            "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          git -C "$KSU_ROOT" config user.name "Root My Galaxy CI"
+          git -C "$KSU_ROOT" config user.email "ci@rootmygalaxy.invalid"
+          # PR #1507 is based on an older KernelSU Next dev history. The 3.4.2
+          # tag has two moved integration files, so resolve those two files by
+          # retaining the current 3.4.2 code and adding the PR's Samsung hooks.
+          set +e
+          git -C "$KSU_ROOT" cherry-pick "$KSU_SAMSUNG_KERNEL_COMMIT"
+          kernel_pick_rc=$?
+          set -e
+          if [[ "$kernel_pick_rc" -ne 0 ]]; then
+            python3 - "$KSU_ROOT" <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+
+          init_path = root / "kernel/core/init.c"
+          init = init_path.read_text()
+          start = init.index("<<<<<<< HEAD")
+          separator = init.index("\n=======\n", start)
+          end = init.index("\n>>>>>>>", separator)
+          end_line = init.index("\n", end + 1)
+          head_block = init[start + len("<<<<<<< HEAD\n"):separator]
+          if "#ifdef KSU_MANAGER_PACKAGE" not in head_block:
+              raise SystemExit("unexpected init.c conflict layout")
+          init = init[:start] + "\tint ret;\n\n" + head_block + "\n" + init[end_line + 1:]
+          init_path.write_text(init)
+
+          manager_path = root / "kernel/hook/syscall_hook_manager.c"
+          manager = manager_path.read_text()
+          start = manager.index("<<<<<<< HEAD")
+          separator = manager.index("\n=======\n", start)
+          end = manager.index("\n>>>>>>>", separator)
+          end_line = manager.index("\n", end + 1)
+          head_block = manager[start + len("<<<<<<< HEAD\n"):separator]
+          pr_block = manager[separator + len("\n=======\n"):end]
+          if "#include \"hook/riscv64/syscall_regs.h\"" not in head_block:
+              raise SystemExit("unexpected syscall_hook_manager.c current-code conflict layout")
+          if '#include "compat/samsung_rkp.h"' not in pr_block:
+              raise SystemExit("unexpected syscall_hook_manager.c PR conflict layout")
+          manager = manager[:start] + head_block + "\n" + pr_block + manager[end_line + 1:]
+          manager_path.write_text(manager)
+          PY
+            git -C "$KSU_ROOT" add               kernel/core/init.c               kernel/hook/syscall_hook_manager.c
+            GIT_EDITOR=true git -C "$KSU_ROOT" cherry-pick --continue
+          fi
+          git -C "$KSU_ROOT" cherry-pick "$KSU_SAMSUNG_USERSPACE_COMMIT"
+          if grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)'               "$KSU_ROOT/kernel/core/init.c"               "$KSU_ROOT/kernel/hook/syscall_hook_manager.c"; then
+            echo "unresolved PR #1507 conflict markers remain"
+            exit 1
+          fi
+          git -C "$KSU_ROOT" log --format='%s' -2 > \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+          grep -Fxq 'fix: stage ksud before switching to late-loaded context' \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+          grep -Fxq 'feat: add Samsung KDP/RKP/DEFEX late-load compatibility' \
+            "$RUNNER_TEMP/ksunext-pr-commits.txt"
+          grep -Fq 'stage_daemon' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
+          grep -Fq 'finish_install' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
+          grep -Fq 'config KSU_SAMSUNG_KDP' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'config KSU_SAMSUNG_RKP' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'config KSU_SAMSUNG_DEFEX' "$KSU_ROOT/kernel/Kconfig"
+
+          # Root My Galaxy waits for the loader process to return before it
+          # verifies the KernelSU control fd. Keep the upstream staging and
+          # finish-install changes, but remove ksud's double-fork daemonization
+          # and Manager restart so the loader remains synchronous through the
+          # module load and control-fd handoff.
+          python3 - "$KSU_ROOT/userspace/ksud/src/late_load.rs" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          source = path.read_text()
+          source = source.replace(
+              "use std::process::Command;\n",
+              "",
+              1,
+          )
+          source = source.replace(
+              "pub fn run(package_name: &String, kmi: Option<String>, allow_shell: bool) -> Result<()> {",
+              "pub fn run(_package_name: &String, kmi: Option<String>, allow_shell: bool) -> Result<()> {",
+              1,
+          )
+          daemonize = "    utils::daemonize(false)?;\n"
+          if source.count(daemonize) != 1:
+              raise SystemExit("unexpected late_load.rs daemonize layout")
+          source = source.replace(daemonize, "", 1)
+          marker = "    // 14. Restart Manager so it gets a fresh ksu fd from the newly loaded kernel module\n"
+          if source.count(marker) != 1:
+              raise SystemExit("unexpected late_load.rs Manager restart layout")
+          start = source.index(marker)
+          end_marker = "    Ok(())\n}"
+          end = source.index(end_marker, start)
+          source = (
+              source[:start]
+              + "    // Root My Galaxy performs control-fd verification after this function returns.\n\n"
+              + source[end:]
+          )
+          path.write_text(source)
+          PY
+          if grep -Fq 'utils::daemonize(false)?' "$KSU_ROOT/userspace/ksud/src/late_load.rs"; then
+            echo "late-load remains asynchronous"
+            exit 1
+          fi
+          if grep -Fq 'Restarting KernelSU Next Manager' "$KSU_ROOT/userspace/ksud/src/late_load.rs"; then
+            echo "late-load still restarts Manager before the wrapper verifies control"
+            exit 1
+          fi
+
+          version_code="$((30000 + $(git -C "$KSU_ROOT" rev-list --count HEAD)))"
+          {
+            echo "KSU_BUILD_VERSION_CODE=$version_code"
+            echo "KSU_BUILD_VERSION_NAME=3.4.2"
+            printf 'KSU_VERSION_MARKER=%s3.4.2\n' "$version_code"
+          } >> "$GITHUB_ENV"
+
+          # Keep the daemon's embedded metadata at the release version while
+          # retaining the two PR commits in the checked-out source history.
+          python3 - "$KSU_ROOT/userspace/ksud/build.rs" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          source = path.read_text()
+          function_needle = "fn get_git_version() -> Result<(u32, String), std::io::Error> {\n"
+          function_prefix = """fn get_git_version() -> Result<(u32, String), std::io::Error> {
+              match (env::var("KSU_BUILD_VERSION_CODE"), env::var("KSU_BUILD_VERSION_NAME")) {
+                  (Ok(code), Ok(name)) => {
+                      let code = code.parse::<u32>().expect("Invalid KernelSU Next build version code");
+                      if code == 0 || name.trim().is_empty() {
+                          panic!("Invalid KernelSU Next build metadata");
+                      }
+                      return Ok((code, name));
+                  }
+                  (Err(env::VarError::NotPresent), Err(env::VarError::NotPresent)) => {}
+                  _ => panic!("Set both KernelSU Next build metadata variables"),
+              }
+          """
+          if source.count(function_needle) != 1:
+              raise SystemExit("unexpected v3.4.2 KernelSU Next build.rs layout")
+          source = source.replace(function_needle, function_prefix, 1)
+
+          main_needle = "fn main() {\n"
+          main_prefix = (
+              'fn main() {\n'
+              '    println!("cargo:rerun-if-env-changed=KSU_BUILD_VERSION_CODE");\n'
+              '    println!("cargo:rerun-if-env-changed=KSU_BUILD_VERSION_NAME");\n'
+          )
+          if source.count(main_needle) != 1:
+              raise SystemExit("unexpected v3.4.2 KernelSU Next build.rs main layout")
+          source = source.replace(main_needle, main_prefix, 1)
+          path.write_text(source)
+          PY
+
+      - name: Verify and embed freshly built Next module
+        run: |
+          set -euo pipefail
+          KSU_ROOT="$RUNNER_TEMP/ksunext-userspace"
+          module="$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          test -s "$module"
+          llvm-readelf -p .modinfo "$module" | grep -Fq "$TARGET_RELEASE"
+          llvm-readelf -SW "$module" | grep -Eq '__versions.* 000000 '
+          module_sections="$(llvm-readelf -SW "$module")"
+          llvm-nm -a "$module" | grep -Eq ' [A-Za-z] ksu_samsung_kdp_init$'
+          llvm-nm -a "$module" | grep -Eq ' [A-Za-z] ksu_samsung_defex_init$'
+          mkdir -p "$KSU_ROOT/userspace/ksud/bin/aarch64"
+          install -m 0644 "$module" \
+            "$KSU_ROOT/userspace/ksud/bin/aarch64/android14-6.1_kernelsu.ko"
+
+      - name: Build KernelSU Next 3.4.2 daemon
+        run: |
+          set -euo pipefail
+          KSU_ROOT="$RUNNER_TEMP/ksunext-userspace"
+          NDK="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export PATH="$NDK/bin:$PATH"
+          export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$NDK/sysroot -I$NDK/sysroot/usr/include/aarch64-linux-android -I$NDK/sysroot/usr/include"
+          export CC_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang"
+          export CXX_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang++"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK/bin/aarch64-linux-android35-clang"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          cargo build --locked --target aarch64-linux-android --release \
+            --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
+          mkdir -p dist
+          cp "$KSU_ROOT/userspace/ksud/target/aarch64-linux-android/release/ksud" \
+            "dist/$DAEMON_NAME"
+
+      - name: Verify pure Next daemon and embedded module provenance
+        run: |
+          set -euo pipefail
+          daemon="dist/$DAEMON_NAME"
+          module="$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          file "$daemon"
+          test "$(stat -c %s "$daemon")" -gt 3000000
+          strings "$daemon" | grep -Fq 'KernelSU Next'
+          strings "$daemon" | grep -Fq 'com.rifsxd.ksunext'
+          strings "$daemon" | grep -Fq "$KSU_VERSION_MARKER"
+          strings "$daemon" | grep -Fq 'Failed to stage ksud'
+          strings "$daemon" | grep -Fq 'Failed to finish ksud installation'
+          if strings "$daemon" | grep -Eiq 'KernelSU-v3\.2\.5|3\.2\.5|legacy-s928|regular-module'; then
+            echo "daemon contains forbidden non-Next lineage marker"
+            exit 1
+          fi
+          if strings "$module" | grep -Eiq 'KernelSU-v3\.2\.5|3\.2\.5|legacy-s928|regular-module'; then
+            echo "module contains forbidden non-Next lineage marker"
+            exit 1
+          fi
+
+          python3 - "$daemon" "$module" <<'PY'
+          import hashlib
+          import struct
+          import sys
+          import zlib
+          from pathlib import Path
+
+          daemon = Path(sys.argv[1]).read_bytes()
+          expected = hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest()
+          if daemon[:6] != b"\x7fELF\x02\x01":
+              raise SystemExit("daemon is not ELF64")
+          shoff = struct.unpack_from("<Q", daemon, 40)[0]
+          entsize, count, names_index = struct.unpack_from("<HHH", daemon, 58)
+          headers = [struct.unpack_from("<IIQQQQIIQQ", daemon, shoff + i * entsize)
+                     for i in range(count)]
+          names_header = headers[names_index]
+          names = daemon[names_header[4]:names_header[4] + names_header[5]]
+          rodata = next(
+              h for h in headers
+              if names[h[0]:].split(b"\0", 1)[0] == b".rodata"
+          )
+          start, end = rodata[4], rodata[4] + rodata[5]
+          found = []
+          offset = start
+          while offset < end:
+              if (daemon[offset] >> 1) & 3 == 3:
+                  offset += 1
+                  continue
+              try:
+                  probe = zlib.decompressobj(-15).decompress(
+                      daemon[offset:offset + 256], 16
+                  )
+              except zlib.error:
+                  offset += 1
+                  continue
+              if not probe.startswith(b"\x7fELF\x02\x01"):
+                  offset += 1
+                  continue
+              decoder = zlib.decompressobj(-15)
+              try:
+                  asset = decoder.decompress(daemon[offset:end], 32 * 1024 * 1024)
+              except zlib.error:
+                  offset += 1
+                  continue
+              if not decoder.eof:
+                  offset += 1
+                  continue
+              consumed = end - offset - len(decoder.unused_data)
+              elf_type = struct.unpack_from("<H", asset, 16)[0]
+              if elf_type == 1:
+                  found.append(hashlib.sha256(asset).hexdigest())
+              offset += consumed
+          if found != [expected]:
+              raise SystemExit(f"embedded module mismatch: {found!r} != {[expected]!r}")
+          print(f"embedded Next module matches {expected}")
+          PY
+
+          exploit="artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so"
+          test -s "$exploit"
+          cp "$exploit" dist/cve-2026-43499-app.so
+          sha256sum "$daemon" "$module" "$exploit" > dist/SHA256SUMS
+          {
+            echo "KernelSU Next release: $KSU_RELEASE_TAG ($KSU_COMMIT)"
+            echo "Samsung late-load PR: #1507 merge $KSU_SAMSUNG_PR_MERGE_COMMIT"
+            echo "Samsung kernel commit: $KSU_SAMSUNG_KERNEL_COMMIT"
+            echo "Samsung userspace commit: $KSU_SAMSUNG_USERSPACE_COMMIT"
+            echo "Target release: $TARGET_RELEASE"
+            echo "Target KMI: $TARGET_KMI"
+            echo "Kernel compatibility scope: upstream PR #1507 KDP/RKP/DEFEX late-load support"
+            echo "Userspace scope: upstream PR #1507 staging plus synchronous Root My Galaxy handoff"
+            echo "Root My Galaxy integration: no late-load double-fork or pre-verification Manager restart"
+            echo "Userspace metadata scope: build.rs version override only"
+            echo "Userspace dependency compatibility: exact KernelSU Next v3.4.2 KernelSU2 dependency graph"
+            echo "Exploit route: upstream legacy S928 engine commit $LEGACY_ENGINE_COMMIT with EZIF target constants"
+            echo "Support feed: publication pending final verification"
+            echo "Publication: pending final app-feed commit"
+            cat dist/SHA256SUMS
+          } > dist/BUILD-REPORT.txt
+
+      - name: Publish EZIF build artifacts on branch
+        run: |
+          set -euo pipefail
+          module="out/$MODULE_NAME"
+          daemon="dist/$DAEMON_NAME"
+          exploit="dist/cve-2026-43499-app.so"
+          test -s "$module"
+          test -s "$daemon"
+          test -s "$exploit"
+          install -d "artifacts/e3q-S928USQU6EZIF" kernelsu
+          install -m 0644 "$exploit" "artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so"
+          install -m 0644 "$module" "kernelsu/$MODULE_NAME"
+          install -m 0755 "$daemon" "kernelsu/$DAEMON_NAME"
+          install -m 0644 dist/BUILD-REPORT.txt "kernelsu/BUILD-REPORT-e3q-S928USQU6EZIF-ksun-3.4.2.txt"
+          install -m 0644 dist/SHA256SUMS "kernelsu/SHA256SUMS-e3q-S928USQU6EZIF-ksun-3.4.2.txt"
+          sha256sum             "artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so"             "kernelsu/$MODULE_NAME"             "kernelsu/$DAEMON_NAME"             > "kernelsu/SHA256SUMS-e3q-S928USQU6EZIF-ksun-3.4.2.txt"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add artifacts/e3q-S928USQU6EZIF kernelsu
+          if git diff --cached --quiet; then
+            echo "EZIF artifacts already published on this branch."
+          else
+            git commit -m "Publish EZIF KernelSU Next 3.4.2 build artifacts"
+            git push origin HEAD:ezif-ksun-342
+          fi
+
+      - name: Upload pure Next test pair
+        uses: actions/upload-artifact@v4
+        with:
+          name: ezif-kernelsu-next-342-pure-pair
+          path: dist/
