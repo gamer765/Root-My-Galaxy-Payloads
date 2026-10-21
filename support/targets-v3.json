@@ -239,11 +239,11 @@
         "6.1.162"
       ],
       "exploit": {
-        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/ksun-samsung-lateload-sync-zzi4/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so",
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6ZZI4/cve-2026-43499-app-legacy-s928.so",
         "size": 104128
       },
       "kernelsu": {
-        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/ksun-samsung-lateload-sync-zzi4/kernelsu/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.4.2-lateload-sync",
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.4.2-lateload-sync",
         "size": 4254920
       }
     },
