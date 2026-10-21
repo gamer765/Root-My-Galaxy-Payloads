@@ -128,7 +128,7 @@ jobs:
       - name: Download pure KernelSU Next module
         uses: actions/download-artifact@v4
         with:
-          name: zzi4-kernelsu-next-342-pure-module
+          name: zzi4-samsung-lateload-sync-module
           path: out
 
       - name: Install host build dependencies
