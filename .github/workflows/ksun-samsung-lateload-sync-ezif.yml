@@ -457,12 +457,12 @@ jobs:
           exploit_size = int(sys.argv[3])
           feed = json.loads(feed_path.read_text())
           payload_id = "e3q-S928USQU6EZIF-ksun-3.4.2-lateload-sync"
-          fallback_id = "e3q-S928USQU6EZIF"
+          fallback_id = "e3q-S928USQU6ZZI4"
           fallback = next((item for item in feed["payloads"] if item.get("payloadId") == fallback_id), None)
           if fallback is None:
               raise SystemExit("working KernelSU Next 3.4.0 fallback entry is missing")
           fallback_url = fallback.get("kernelsu", {}).get("url", "")
-          if not fallback_url.endswith("ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.0"):
+          if not fallback_url.endswith("ksud-e3q-S928USQU6ZZI4-kdp-ksun-3.4.0"):
               raise SystemExit(f"working 3.4.0 fallback URL changed: {fallback_url}")
           entry = {
               "payloadId": payload_id,
