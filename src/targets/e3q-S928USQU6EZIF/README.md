@@ -1,33 +1,34 @@
-# SM-S928U1 S928U1UEU6EZIF build profile
+# e3q-S928USQU6EZIF target profile
 
-This profile targets the Samsung package release `S928U1UEU6EZIF`. The
-matching boot metadata and kernel release use Samsung's internal US variant
-identifier:
+This profile targets the Samsung Galaxy S24 Ultra SM-S928U1 package
+`S928U1UEU6EZIF`, with kernel release:
 
 `6.1.162-android14-11-34343818-abS928USQU6EZIF`
 
-The attached `BSDIFF40` patch was applied to the complete DZH3-derived
-`boot.zzhl.img`, producing `boot.zzi4.img`. The supplied `vendor_boot.img`
-and `abl.elf` independently contain the same `S928USQU6EZIF` release marker.
+The EZIF target boot image was reconstructed by applying the supplied
+`boot.img.p` BSDIFF40 patch to the complete ZZI4 `boot.img`. The resulting
+kernel image is 38,140,416 bytes with SHA-256:
 
-## Repository contents
+`80220a6eb593f4e8d6957fb0c8950bd34b83c618009b42faf14b915c5cf5d171`
 
-- `target.h` — EZIF-specific physical P0, slide, ABI, symbol, and layout
-  constants.
-- `p0_fingerprint.h` — generated from `boot.zzi4.img` at probe offset
-  `0x1f0000`.
-- `artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app.so` — legacy S928
-  stable-race CVE-2026-43499 app payload for this exact target.
+The P0 oracle uses probe offset `0x1f0000`. Its generated fingerprint header
+has SHA-256:
 
-The payload source is configured for KernelSU Next handoff only. No original
-KernelSU module or daemon is part of this target.
+`f1c6d91550841766c4a7c9765318801552693d50103cebf2ef11441712200b8a`
 
-## Validation status
+The reconstructed EZIF ELF resolves the exploit-relevant symbols at the same
+offsets as the confirmed ZZI4 6.1.162 kernel. The target-specific profile
+therefore updates the release fingerprint and P0 table while retaining the
+verified compact waiter, KASLR, physical load, and symbol/layout constants.
 
-The target profile has passed local compilation, exact symbol-offset checks
-against the recovered EZIF ELF, and payload size/format checks. The matching
-KernelSU Next module and daemon still require an exact build and hardware
-test. This profile is therefore not in the automatic support feed yet.
+The app payload is built from the legacy S928 engine at commit
+`139c6dad8cc81be7f4ab2ef03c6a1463cd60f000`. The KernelSU side is the initial
+KernelSU-Next v3.4.2 lineage at commit
+`4c706b5938665866ebe16944a481a7b91e3396af`, with Samsung late-load PR #1507
+merge `b8dafae390eba00cba9983e8ef1e1eaad74ba4ed`. SUSFS and regular KernelSU
+variants are excluded.
 
-The full image inputs and their hashes are recorded in
-`docs/SM-S928U1-S928U1UEU6EZIF.md`.
+The EZIF build workflow creates the exploit, android14-6.1 module, and
+KernelSU-Next daemon on branch `ezif-ksun-342`. Artifacts remain outside the
+automatic support feed until the exact build completes and hardware validation
+confirms the pair.
