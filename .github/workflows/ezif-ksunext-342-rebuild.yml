@@ -238,6 +238,7 @@ jobs:
             stable
           built="$LEGACY_ROOT/build/e3q-S928USQU6EZIF/cve-2026-43499-app.stable.so"
           payload="artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so"
+          mkdir -p "$(dirname "$payload")"
           test "$(stat -c %s "$built")" -eq 104128
           llvm-readelf -h "$built" | grep -Fq "AArch64"
           # Verify the pinned source lineage directly; the fixed-size stable ELF may
