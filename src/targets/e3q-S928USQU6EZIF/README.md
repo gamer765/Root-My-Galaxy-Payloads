@@ -30,9 +30,12 @@ variants are excluded.
 
 The completed branch build produced:
 
-- exploit: `b3470c80cb33738a9dbc516244ff18ea6d4d551b5e9aee83e03e4b35f87991e5`
-- android14-6.1 module: `6935477d3be20281bbc223584cb18d553b677c73c54af3c368fc220ce687752d`
-- KernelSU-Next daemon: `3bfe39976c35a3d737bcb2e485f103cd30c8586b67fbc7cbfd696b4af7ecc649`
+- exploit: 104,128 bytes,
+  `b3470c80cb33738a9dbc516244ff18ea6d4d551b5e9aee83e03e4b35f87991e5`
+- android14-6.1 module: 557,168 bytes,
+  `6935477d3be20281bbc223584cb18d553b677c73c54af3c368fc220ce687752d`
+- KernelSU-Next daemon: 4,179,384 bytes,
+  `3bfe39976c35a3d737bcb2e485f103cd30c8586b67fbc7cbfd696b4af7ecc649`
 
 The artifacts are published on branch `ezif-ksun-342`. The automatic support
 feed remains unchanged pending hardware validation of this exact pair.
