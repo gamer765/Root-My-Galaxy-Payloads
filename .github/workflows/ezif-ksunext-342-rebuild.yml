@@ -388,15 +388,8 @@ jobs:
           late_path = Path(sys.argv[2])
 
           cli = cli_path.read_text()
-          allow_field = """        /// Pass allow_shell=1 when loading kernelsu.ko
-          #[arg(long)]
-          allow_shell: bool,
-          """
-          safe_field = allow_field + """        
-          /// Recovery: do not run third-party module startup, scripts, or mounts
-          #[arg(long)]
-          safe_mode: bool,
-          """
+          allow_field = "        /// Pass allow_shell=1 when loading kernelsu.ko\\n        #[arg(long)]\\n        allow_shell: bool,\\n"
+          safe_field = allow_field + "        /// Recovery: do not run third-party module startup, scripts, or mounts\\n        #[arg(long)]\\n        safe_mode: bool,\\n"
           if cli.count(allow_field) != 1:
               raise SystemExit("unexpected cli.rs allow_shell layout")
           cli = cli.replace(allow_field, safe_field, 1)
