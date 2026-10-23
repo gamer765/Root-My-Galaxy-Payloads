@@ -446,7 +446,7 @@ static int verify_kernelsu_control(void) {
   return 0;
 }
 
-static int run_kernelsu_late_load(struct su_request *request, int conn) {
+static int run_kernelsu_late_load(struct su_request *request, int conn, int safe_mode) {
   pid_t pid = fork();
   if (pid < 0) {
     return 1;
@@ -481,8 +481,14 @@ static int run_kernelsu_late_load(struct su_request *request, int conn) {
       /* Let the downloaded target-specific ksud select its embedded module
        * from the running kernel.  Ephemeral mode avoids replacing an existing
        * /data/adb/ksud while the app only needs the module for this boot. */
-      execl(LOGCAT_PATH, "logcat", "late-load", "--ephemeral",
-            "--package-name", "me.weishu.kernelsu", (char *)NULL);
+      if (safe_mode) {
+        execl(LOGCAT_PATH, "logcat", "late-load", "--ephemeral",
+              "--safe-mode", "--package-name", "me.weishu.kernelsu",
+              (char *)NULL);
+      } else {
+        execl(LOGCAT_PATH, "logcat", "late-load", "--ephemeral",
+              "--package-name", "me.weishu.kernelsu", (char *)NULL);
+      }
       dprintf(STDERR_FILENO, "late-load: exec: %s\n", strerror(errno));
       _exit(12);
     }
@@ -839,10 +845,14 @@ static void serve_one(int conn) {
     return;
   }
 
-  int is_kernelsu_late_load = request.header.argc == 2 &&
+  int is_kernelsu_late_load = request.header.argc >= 2 &&
                               strcmp(request.argv[1], "--late-load") == 0;
-  int status = is_kernelsu_late_load
-                   ? run_kernelsu_late_load(&request, conn)
+  int safe_mode = is_kernelsu_late_load && request.header.argc == 3 &&
+                  strcmp(request.argv[2], "--safe-mode") == 0;
+  int valid_late_load = is_kernelsu_late_load &&
+                        (request.header.argc == 2 || safe_mode);
+  int status = valid_late_load
+                   ? run_kernelsu_late_load(&request, conn, safe_mode)
                    : request.header.interactive
                          ? run_interactive(&request, conn)
                          : run_direct(&request, conn);
