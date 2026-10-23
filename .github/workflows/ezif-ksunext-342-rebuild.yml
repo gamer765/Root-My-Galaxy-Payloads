@@ -23,7 +23,8 @@ env:
   TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
   TARGET_KMI: android14-6.1
   MODULE_NAME: android14-6.1_kernelsu-e3q-S928USQU6EZIF-kdp-3.4.2.ko
-  DAEMON_NAME: ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2
+  # Separate Safe Root test daemon; the normal pure-Next daemon remains untouched.
+  DAEMON_NAME: ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2-safe-root
 
 jobs:
   build-module:
@@ -376,6 +377,73 @@ jobs:
             exit 1
           fi
 
+          # Safe Root mode is a separate recovery path. It still loads the exact
+          # KernelSU Next module and applies only the root profile/features; it
+          # does not start third-party module code, mounts, or boot scripts.
+          python3 - "$KSU_ROOT/userspace/ksud/src/cli.rs" "$KSU_ROOT/userspace/ksud/src/late_load.rs" <<'PY'
+          from pathlib import Path
+          import sys
+
+          cli_path = Path(sys.argv[1])
+          late_path = Path(sys.argv[2])
+
+          cli = cli_path.read_text()
+          allow_field = """        /// Pass allow_shell=1 when loading kernelsu.ko
+          #[arg(long)]
+          allow_shell: bool,
+"""
+          safe_field = allow_field + """        
+          /// Recovery: do not run third-party module startup, scripts, or mounts
+          #[arg(long)]
+          safe_mode: bool,
+"""
+          if cli.count(allow_field) != 1:
+              raise SystemExit("unexpected cli.rs allow_shell layout")
+          cli = cli.replace(allow_field, safe_field, 1)
+          old_dispatch = "        } => crate::late_load::run(&package_name, kmi, allow_shell),"
+          new_dispatch = "        } => crate::late_load::run(&package_name, kmi, allow_shell, safe_mode),"
+          if cli.count(old_dispatch) != 1:
+              raise SystemExit("unexpected cli.rs late-load dispatch layout")
+          cli = cli.replace(old_dispatch, new_dispatch, 1)
+          cli_path.write_text(cli)
+
+          late = late_path.read_text()
+          old_sig = "pub fn run(_package_name: &String, kmi: Option<String>, allow_shell: bool) -> Result<()> {"
+          new_sig = "pub fn run(_package_name: &String, kmi: Option<String>, allow_shell: bool, safe_mode: bool) -> Result<()> {"
+          if late.count(old_sig) != 1:
+              raise SystemExit("unexpected late_load.rs synchronous signature layout")
+          late = late.replace(old_sig, new_sig, 1)
+
+          normal_start = "    if let Err(e) = crate::module_config::clear_all_temp_configs() {"
+          normal_end = "    Ok(())\n}"
+          if late.count(normal_start) != 1 or late.count(normal_end) != 1:
+              raise SystemExit("unexpected late_load.rs safe-mode insertion layout")
+          start = late.index(normal_start)
+          end = late.index(normal_end, start)
+          normal = late[start:end]
+          indented = "\n".join("    " + line if line else line for line in normal.split("\n"))
+          safe = """    if !safe_mode {
+%s
+    } else {
+        warn!("SAFE ROOT: skipping module updates, pruning, module sepolicy, late-load scripts, system.prop, metamodule mounts, post-mount, service and boot-completed scripts");
+        if let Err(e) = crate::profile::apply_sepolies() {
+            warn!("apply root profile sepolicy failed: {e}");
+        }
+        crate::feature::init_forced_features();
+        if let Err(e) = crate::feature::init_features() {
+            warn!("init features failed: {e}");
+        }
+    }
+
+""" % indented
+          late = late[:start] + safe + late[end:]
+          late_path.write_text(late)
+          PY
+          grep -Fq 'safe_mode: bool' "$KSU_ROOT/userspace/ksud/src/cli.rs"
+          grep -Fq 'allow_shell, safe_mode' "$KSU_ROOT/userspace/ksud/src/cli.rs"
+          grep -Fq 'safe_mode: bool' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
+          grep -Fq 'SAFE ROOT: skipping module updates' "$KSU_ROOT/userspace/ksud/src/late_load.rs"
+
           version_code="$((30000 + $(git -C "$KSU_ROOT" rev-list --count HEAD)))"
           {
             echo "KSU_BUILD_VERSION_CODE=$version_code"
@@ -465,6 +533,8 @@ jobs:
           strings "$daemon" | grep -Fq "$KSU_VERSION_MARKER"
           strings "$daemon" | grep -Fq 'Failed to stage ksud'
           strings "$daemon" | grep -Fq 'Failed to finish ksud installation'
+          strings "$daemon" | grep -Fq 'SAFE ROOT: skipping module updates'
+          strings "$daemon" | grep -Fq 'safe_mode'
           if strings "$daemon" | grep -Eiq 'KernelSU-v3\.2\.5|3\.2\.5|legacy-s928|regular-module'; then
             echo "daemon contains forbidden non-Next lineage marker"
             exit 1
@@ -544,6 +614,7 @@ jobs:
             echo "Target KMI: $TARGET_KMI"
             echo "Kernel compatibility scope: upstream PR #1507 KDP/RKP/DEFEX late-load support"
             echo "Userspace scope: upstream PR #1507 staging plus synchronous Root My Galaxy handoff"
+            echo "Safe Root scope: --late-load --safe-mode skips third-party module startup, scripts, mounts, and boot stages"
             echo "Root My Galaxy integration: no late-load double-fork or pre-verification Manager restart"
             echo "Userspace metadata scope: build.rs version override only"
             echo "Userspace dependency compatibility: exact KernelSU Next v3.4.2 KernelSU2 dependency graph"
