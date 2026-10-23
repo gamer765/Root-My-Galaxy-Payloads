@@ -1,3 +1,3 @@
 b3470c80cb33738a9dbc516244ff18ea6d4d551b5e9aee83e03e4b35f87991e5  artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so
-3d62585954836d5908fe34bcef9a9f91eba2383dcfb654ab127395aec831ebf8  kernelsu/android14-6.1_kernelsu-e3q-S928USQU6EZIF-kdp-3.4.2.ko
-07f7878702f34215fab66af964ae9f9c23eb90d32b8d9a6626d7a7016710aa3c  kernelsu/ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2-safe-root
+d45fd78a579e68213595e315c823d759c8b2749558fc95a49fda973b66edaeac  kernelsu/android14-6.1_kernelsu-e3q-S928USQU6EZIF-kdp-3.4.2.ko
+eaeb36e5a66d46287638d9f9dc70eae7c674d2c4eb1daa652ba49d45f4db8a02  kernelsu/ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2-safe-root
