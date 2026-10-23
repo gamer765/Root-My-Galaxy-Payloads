@@ -482,12 +482,12 @@ static int run_kernelsu_late_load(struct su_request *request, int conn, int safe
        * from the running kernel.  Ephemeral mode avoids replacing an existing
        * /data/adb/ksud while the app only needs the module for this boot. */
       if (safe_mode) {
-        execl(LOGCAT_PATH, "logcat", "late-load", "--ephemeral",
-              "--safe-mode", "--package-name", "me.weishu.kernelsu",
+        execl(LOGCAT_PATH, "logcat", "late-load", "--safe-mode",
+              "--package-name", "com.rifsxd.ksunext",
               (char *)NULL);
       } else {
-        execl(LOGCAT_PATH, "logcat", "late-load", "--ephemeral",
-              "--package-name", "me.weishu.kernelsu", (char *)NULL);
+        execl(LOGCAT_PATH, "logcat", "late-load",
+              "--package-name", "com.rifsxd.ksunext", (char *)NULL);
       }
       dprintf(STDERR_FILENO, "late-load: exec: %s\n", strerror(errno));
       _exit(12);
