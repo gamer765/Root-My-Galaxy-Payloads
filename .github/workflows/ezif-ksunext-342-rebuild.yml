@@ -402,13 +402,13 @@ jobs:
             package_name,
             kmi,
             allow_shell,
-        } =>"""
+          } =>"""
           new_pattern = """        Commands::LateLoad {
             package_name,
             kmi,
             allow_shell,
             safe_mode,
-        } =>"""
+          } =>"""
           if cli.count(old_pattern) != 1:
               raise SystemExit("unexpected cli.rs late-load match layout")
           cli = cli.replace(old_pattern, new_pattern, 1)
