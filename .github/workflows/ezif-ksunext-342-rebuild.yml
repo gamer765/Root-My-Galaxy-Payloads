@@ -653,6 +653,24 @@ jobs:
             git push origin HEAD:ezif-ksun-342
           fi
 
+          # The app pins all artifacts to the main-feed commit. Publish only
+          # this uniquely named Safe Root daemon to main; never replace the
+          # normal ZZI4 or EZIF 3.4.2 daemon.
+          git fetch origin main
+          main_root="$RUNNER_TEMP/safe-root-main-publish"
+          git worktree add --detach "$main_root" origin/main
+          install -d "$main_root/kernelsu"
+          install -m 0755 "$daemon" "$main_root/kernelsu/$DAEMON_NAME"
+          git -C "$main_root" config user.name github-actions[bot]
+          git -C "$main_root" config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git -C "$main_root" add "kernelsu/$DAEMON_NAME"
+          if git -C "$main_root" diff --cached --quiet; then
+            echo "Safe Root daemon already published on main."
+          else
+            git -C "$main_root" commit -m "Publish EZIF Safe Root daemon"
+            git -C "$main_root" push origin HEAD:main
+          fi
+
       - name: Upload pure Next test pair
         uses: actions/upload-artifact@v4
         with:
