@@ -398,17 +398,8 @@ jobs:
           if cli.count(allow_field) != 1:
               raise SystemExit("unexpected cli.rs allow_shell layout")
           cli = cli.replace(allow_field, safe_field, 1)
-          old_pattern = """        Commands::LateLoad {
-            package_name,
-            kmi,
-            allow_shell,
-          } =>"""
-          new_pattern = """        Commands::LateLoad {
-            package_name,
-            kmi,
-            allow_shell,
-            safe_mode,
-          } =>"""
+          old_pattern = "            allow_shell,\n        } =>"
+          new_pattern = "            allow_shell,\n            safe_mode,\n        } =>"
           if cli.count(old_pattern) != 1:
               raise SystemExit("unexpected cli.rs late-load match layout")
           cli = cli.replace(old_pattern, new_pattern, 1)
