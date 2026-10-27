@@ -575,6 +575,8 @@ jobs:
           sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' "$KDIR/include/generated/utsrelease.h"
           printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
           cd KernelSU/kernel
+          echo "generated KernelSU init context:"
+          nl -ba core/init.c | sed -n '200,225p'
           make -C "$KDIR" M="$PWD" src="$PWD" ARCH=arm64 LLVM=1 LLVM_IAS=1 KERNELRELEASE="$TARGET_RELEASE" \
             CONFIG_KSU=m CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y \
             CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y SKIP_BTF=1 KCFLAGS="-fno-stack-protector" modules -j"$(nproc)" \
