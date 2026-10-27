@@ -168,14 +168,14 @@ jobs:
                   pos = body.rfind("return;")
                   if pos < 0:
                       raise SystemExit("Samsung dispatcher fallback has no early return")
-                  body = body[:pos] + "ksu_avc_spoof_init();\\n        " + body[pos:]
+                  body = body[:pos] + "ksu_avc_spoof_init();\n        " + body[pos:]
                   text = text[:start] + body + text[end:]
                   manager.write_text(text)
 
           init = Path("KernelSU/kernel/core/init.c")
           text = init.read_text()
           if "extern void ksu_avc_spoof_late_init(void);" not in text:
-              text = text.replace("#include <linux/export.h>", "#include <linux/export.h>\\nextern void ksu_avc_spoof_late_init(void);", 1)
+              text = text.replace("#include <linux/export.h>", "#include <linux/export.h>\nextern void ksu_avc_spoof_late_init(void);", 1)
           start = text.find("if (ksu_late_loaded) {")
           if start < 0:
               raise SystemExit("clean KernelSU-Next late-load branch is missing")
@@ -185,7 +185,7 @@ jobs:
           if anchor not in body:
               raise SystemExit("late-load completion anchor is missing")
           if "ksu_avc_spoof_late_init();" not in body:
-              body = body.replace(anchor, anchor + "\\n        ksu_avc_spoof_late_init();", 1)
+              body = body.replace(anchor, anchor + "\n        ksu_avc_spoof_late_init();", 1)
               text = text[:start] + body + text[start + len(body):]
           init.write_text(text)
           PY
@@ -570,7 +570,7 @@ jobs:
           KDIR="${KDIR:-/opt/ddk/src/${KMI}}"
           test -f "$KDIR/Makefile" || { echo "::error::DDK kernel tree missing at $KDIR"; exit 1; }
           sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' "$KDIR/include/generated/utsrelease.h"
-          printf '%s\\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
+          printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
           cd KernelSU/kernel
           make -C "$KDIR" M="$PWD" src="$PWD" ARCH=arm64 LLVM=1 LLVM_IAS=1 KERNELRELEASE="$TARGET_RELEASE" \
             CONFIG_KSU=m CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y \
