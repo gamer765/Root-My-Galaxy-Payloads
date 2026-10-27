@@ -744,12 +744,13 @@ jobs:
           ls -l "$binary"
           # The embedded module is the whole point of this job, so it is checked in the binary rather
           # than assumed from the build having succeeded.
-          strings "$binary" | grep -q "${KMI}_kernelsu.ko" || {
+          strings "$binary" > /tmp/ksud.strings
+          grep -q "${KMI}_kernelsu.ko" /tmp/ksud.strings || {
             echo "::error::the built daemon does not name ${KMI}_kernelsu.ko, so it carries no module"
             exit 1
           }
-          strings "$binary" | grep -q "mount_hide" || {
-            echo "::error::the daemon does not embed the mount_hide-enabled module"; exit 1; }
+          # RustEmbed compresses the .ko asset, so its internal symbols are not plain strings in ksud.
+          # The module artifact itself is checked for mount_hide and SUSFS markers in the build job.
         env:
           KMI: ${{ inputs.kmi || 'android14-6.1' }}
 
