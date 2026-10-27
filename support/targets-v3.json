@@ -514,7 +514,7 @@
       "kernelsu": {
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-clean-mounthide",
         "size": 7301584,
-        "sha256": "3265e867c35b86a1bade9ffbe387732b905387fa63a551064e5d0db270d37015"
+        "sha256": "f9a0eccc4ba8c532445142ed0f82f0cffed57af77079a6448f24e3d635f6b030"
       },
       "exploit": {
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
