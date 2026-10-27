@@ -498,6 +498,30 @@
       }
     },
     {
+      "payloadId": "e3q-S928USQU6EZIF-ksun-3.4.2-clean-susfs-mounthide",
+      "displayName": "EXPERIMENTAL | Galaxy S24 Ultra SM-S928U1 | EZIF | Kernel 6.1.162 | KernelSU Next 3.4.2 + SUSFS + mount_hide",
+      "models": [
+        "SM-S928U1"
+      ],
+      "kernelVersions": [
+        "6.1.162"
+      ],
+      "manualOnly": true,
+      "experimental": true,
+      "firmware": "S928U1UEU6EZIF",
+      "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
+      "notes": "Built from clean KernelSU-Next with the Samsung KDP/RKP/DEFEX patch, fused SUSFS, JingMatrix mount_hide, and Liam's bind-mount source-path fix. Experimental; exact-device runtime testing is still required.",
+      "kernelsu": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-clean-mounthide",
+        "size": 7301584,
+        "sha256": "3265e867c35b86a1bade9ffbe387732b905387fa63a551064e5d0db270d37015"
+      },
+      "exploit": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
+        "size": 104128
+      }
+    },
+    {
       "payloadId": "e3q-S928USQU6EZIF-susfs-l-l",
       "displayName": "EXPERIMENTAL | Galaxy S24 Ultra SM-S928U1 | EZIF | Hardened SUSFS KernelSU-Next",
       "models": [
