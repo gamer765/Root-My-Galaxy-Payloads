@@ -60,6 +60,11 @@ on:
         description: 'Exact EZIF kernel release for the S24 Ultra module'
         required: false
         default: '6.1.162-android14-11-34343818-abS928USQU6EZIF'
+      publish_s24u:
+        description: 'Add the experimental S24 Ultra payload to main after successful build'
+        required: false
+        type: boolean
+        default: false
       publish:
         description: 'Commit the merged daemon and support/kernelsu-generic-susfs.json'
         required: false
@@ -867,3 +872,84 @@ jobs:
             -m "Built from $SUSFS_REPO@$SUSFS_REF merged into KernelSU-Next $KSU_REF by the ${{ github.workflow }} workflow."
           git pull --rebase --autostash
           git push
+
+  publish_s24u_payload:
+    name: publish experimental S24 Ultra payload
+    needs: daemon
+    if: inputs.publish_s24u
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main payload feed
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download validated daemon
+        uses: actions/download-artifact@v7
+        with:
+          name: ksud-susfs-\${{ inputs.kmi || 'android14-6.1' }}
+          path: /tmp/ksud
+
+      - name: Install daemon and add experimental payload
+        env:
+          KSU_REF: \${{ inputs.ksu_ref || 'v3.4.2' }}
+        run: |
+          set -eu
+          name=ksud-next-e3q-S928USQU6EZIF-clean-mounthide
+          binary=$(find /tmp/ksud -type f -name ksud | head -1)
+          test -n "$binary"
+          install -m 0644 "$binary" "kernelsu/$name"
+          size=$(stat -c %s "kernelsu/$name")
+          digest=$(sha256sum "kernelsu/$name" | cut -d' ' -f1)
+          python3 - "$size" "$digest" "$KSU_REF" <<'PY'
+          import json
+          import sys
+
+          size, digest, version = int(sys.argv[1]), sys.argv[2], sys.argv[3].lstrip("vV")
+          payload_id = "e3q-S928USQU6EZIF-ksun-" + version + "-clean-susfs-mounthide"
+          entry = {
+              "payloadId": payload_id,
+              "displayName": f"EXPERIMENTAL | Galaxy S24 Ultra SM-S928U1 | EZIF | Kernel 6.1.162 | KernelSU Next {version} + SUSFS + mount_hide",
+              "models": ["SM-S928U1"],
+              "kernelVersions": ["6.1.162"],
+              "manualOnly": True,
+              "experimental": True,
+              "firmware": "S928U1UEU6EZIF",
+              "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
+              "notes": "Built from clean KernelSU-Next with the Samsung KDP/RKP/DEFEX patch, fused SUSFS, JingMatrix mount_hide, and Liam's bind-mount source-path fix. Experimental; exact-device runtime testing is still required.",
+              "kernelsu": {
+                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-clean-mounthide",
+                  "size": size,
+                  "sha256": digest,
+              },
+              "exploit": {
+                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
+                  "size": 104128,
+              },
+          }
+
+          path = "support/targets-v3.json"
+          with open(path, encoding="utf-8") as handle:
+              feed = json.load(handle)
+          payloads = feed["payloads"]
+          payloads = [item for item in payloads if item.get("payloadId") != payload_id]
+          index = next((i for i, item in enumerate(payloads)
+                        if item.get("payloadId") == "e3q-S928USQU6EZIF-susfs-l-l"), len(payloads))
+          payloads.insert(index, entry)
+          feed["payloads"] = payloads
+          with open(path, "w", encoding="utf-8", newline="\\n") as handle:
+              json.dump(feed, handle, indent=2, ensure_ascii=False)
+              handle.write("\\n")
+          print(json.dumps(entry, indent=2))
+          PY
+
+      - name: Commit payload to main
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kernelsu/ksud-next-e3q-S928USQU6EZIF-clean-mounthide support/targets-v3.json
+          git commit -m "build(payloads): add experimental S24 Ultra clean KernelSU SUSFS payload"
+          git push origin HEAD:main
+
