@@ -501,7 +501,7 @@
   "experimentalPayloads": [
     {
       "payloadId": "e3q-S928USQU6EZIF-susfs-l-l",
-      "displayName": "EXPERIMENTAL | Galaxy S24 Ultra SM-S928U1 | EZIF | Samsung SUSFS L-L module",
+      "displayName": "EXPERIMENTAL | Galaxy S24 Ultra SM-S928U1 | EZIF | Hardened SUSFS KernelSU-Next",
       "models": [
         "SM-S928U1"
       ],
@@ -513,11 +513,16 @@
       "firmware": "S928U1UEU6EZIF",
       "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
       "susfsModule": {
-        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/2a1def92a66a3ccbdccd2388a82441c2b307ea06/kernelsu/susfs-l-l-ezif-s928u1-test-arm64.zip",
-        "size": 220339,
-        "sha256": "d36e9e102c2778ba4f5c6341f378c71200c6a854679e5aa8666f018ea5f346bd"
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/0cf9fc25487068bd6e6900fd4d44e5494c21aa9b/kernelsu/susfs-hardened-e3q-S928USQU6EZIF.zip",
+        "size": 316894,
+        "sha256": "c8504b48843243b762fd5f2d922ec009e3fc8e0cc5d4f278daffdc0b125a0f62"
       },
-      "notes": "Experimental manual-only Samsung SUSFS L-L package. Not used by automatic Root My Galaxy payload selection."
+      "notes": "Experimental manual-only hardened SUSFS KernelSU-Next package. Built from KernelSU-Next susfs-x64-test lineage c3399391 with exact EZIF release matching; hardware load remains unvalidated.",
+      "kernelsu": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/0cf9fc25487068bd6e6900fd4d44e5494c21aa9b/kernelsu/ksud-next-e3q-S928USQU6EZIF-hardened-susfs",
+        "size": 4471440,
+        "sha256": "acdab47ce3830bbc7dffbcc6dc6a53b012501b5133be24cf31bf6914d0821808"
+      }
     }
   ]
 }
