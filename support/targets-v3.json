@@ -522,7 +522,7 @@
         "sha256": "acdab47ce3830bbc7dffbcc6dc6a53b012501b5133be24cf31bf6914d0821808"
       },
       "exploit": {
-        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app.so",
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
         "size": 104128
       }
     }
