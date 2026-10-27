@@ -1,0 +1,130 @@
+name: Build EZIF hardened SUSFS KernelSU-Next pair
+
+on:
+  push:
+    branches: [susfs-l-l-ezif-test]
+    paths-ignore:
+      - kernelsu/**
+      - support/targets-v3.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  KSU_SOURCE_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
+  KSU_SOURCE_COMMIT: c3399391
+  TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
+  TARGET_KMI: android14-6.1
+  DDK_IMAGE: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
+
+jobs:
+  build-kernel-modules:
+    name: Build EZIF KernelSU and hardened SUSFS modules
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
+      options: --privileged
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+      - name: Build exact-release KernelSU module and hardened SUSFS guard LKM
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KDIR:-}"; test -f "$KDIR/Makefile"
+          root="$RUNNER_TEMP/ksunext-susfs"
+          git clone --no-checkout "$KSU_SOURCE_REPO" "$root"
+          git -C "$root" checkout --detach "$KSU_SOURCE_COMMIT"
+          sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' "$KDIR/include/generated/utsrelease.h"
+          printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cd "$root/kernel"
+          make -C "$KDIR" M="$root/kernel" src="$root/kernel" ARCH=arm64 LLVM=1 LLVM_IAS=1 KERNELRELEASE="$TARGET_RELEASE" CONFIG_KSU=m CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y SKIP_BTF=1 KCFLAGS="-fno-stack-protector" modules -j"$(nproc)"
+          test -s kernelsu.ko; llvm-strip -d kernelsu.ko
+          cd "$root/kernel/susfs"
+          make -C "$KDIR" M="$PWD" ARCH=arm64 LLVM=1 LLVM_IAS=1 modules -j"$(nproc)"
+          test -s susfs_guard_lkm.ko; llvm-strip -d susfs_guard_lkm.ko
+          llvm-readelf -p .modinfo "$root/kernel/kernelsu.ko" | grep -Fq "$TARGET_RELEASE"
+          llvm-readelf -p .modinfo susfs_guard_lkm.ko | grep -Fq "$TARGET_RELEASE"
+          llvm-readelf -SW "$root/kernel/kernelsu.ko" | grep -Eq '__versions.* 000000 '
+          llvm-readelf -SW susfs_guard_lkm.ko | grep -Eq '__versions.* 000000 '
+          install -m 0644 "$root/kernel/kernelsu.ko" "$GITHUB_WORKSPACE/out/${TARGET_KMI}_kernelsu.ko"
+          install -m 0644 susfs_guard_lkm.ko "$GITHUB_WORKSPACE/out/${TARGET_KMI}_susfs_guard_lkm.ko"
+          sha256sum "$GITHUB_WORKSPACE/out/"*.ko > "$GITHUB_WORKSPACE/out/MODULE-SHA256SUMS"
+      - name: Upload exact-release kernel modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: ezif-hardened-susfs-kernel-modules
+          path: out/
+          if-no-files-found: error
+
+  build-ksud:
+    name: Build hardened EZIF KernelSU-Next ksud
+    needs: build-kernel-modules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+      - name: Download exact-release kernel modules
+        uses: actions/download-artifact@v4
+        with:
+          name: ezif-hardened-susfs-kernel-modules
+          path: out
+      - name: Check preinstalled host dependencies
+        run: command -v cargo && command -v clang && command -v unzip && command -v curl
+      - name: Install Android NDK r29
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/android-ndk-r29-linux.zip"
+          curl --fail --location --retry 3 --retry-delay 2 --output "$archive" https://dl.google.com/android/repository/android-ndk-r29-linux.zip
+          unzip -q -o "$archive" -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_ROOT=$RUNNER_TEMP/android-ndk-r29" >> "$GITHUB_ENV"
+      - name: Install Rust Android target
+        run: rustup target add aarch64-linux-android
+      - name: Checkout hardened KernelSU-Next userspace and embed assets
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/ksunext-userspace"
+          git clone --no-checkout "$KSU_SOURCE_REPO" "$root"
+          git -C "$root" checkout --detach "$KSU_SOURCE_COMMIT"
+          asset_dir="$root/userspace/ksud/bin/aarch64"
+          mkdir -p "$asset_dir"
+          install -m 0644 out/${TARGET_KMI}_kernelsu.ko "$asset_dir/${TARGET_KMI}_kernelsu.ko"
+          install -m 0644 out/${TARGET_KMI}_susfs_guard_lkm.ko "$asset_dir/${TARGET_KMI}_susfs_guard_lkm.ko"
+      - name: Build hardened ksud
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/ksunext-userspace"; ndk="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export PATH="$ndk/bin:$PATH"; export LIBCLANG_PATH="$(llvm-config --libdir)"
+          export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$ndk/sysroot -I$ndk/sysroot/usr/include/aarch64-linux-android -I$ndk/sysroot/usr/include"
+          export CC_aarch64_linux_android="$ndk/bin/aarch64-linux-android35-clang"; export CXX_aarch64_linux_android="$ndk/bin/aarch64-linux-android35-clang++"; export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ndk/bin/aarch64-linux-android35-clang"; export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          cargo build --locked --target aarch64-linux-android --release --manifest-path "$root/userspace/ksud/Cargo.toml"
+          mkdir -p dist; cp "$root/userspace/ksud/target/aarch64-linux-android/release/ksud" dist/ksud-next-e3q-S928USQU6EZIF-hardened-susfs
+      - name: Verify and package experimental pair
+        run: |
+          set -euo pipefail
+          daemon=dist/ksud-next-e3q-S928USQU6EZIF-hardened-susfs; test -s "$daemon"; file "$daemon"
+          strings "$daemon" | grep -Fq 'susfs_guard_lkm.ko'; strings "$daemon" | grep -Fq 'KernelSU Next'
+          cp artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so dist/cve-2026-43499-app.so
+          cp out/${TARGET_KMI}_kernelsu.ko dist/
+          cp out/${TARGET_KMI}_susfs_guard_lkm.ko dist/
+          printf '%s\n' "KernelSU-Next commit: $KSU_SOURCE_COMMIT" "Target release: $TARGET_RELEASE" "Target KMI: $TARGET_KMI" "Embedded assets: ${TARGET_KMI}_kernelsu.ko and ${TARGET_KMI}_susfs_guard_lkm.ko" "Status: experimental; exact EZIF hardware load not validated" > dist/BUILD-REPORT.txt
+          sha256sum dist/* > dist/SHA256SUMS
+      - name: Publish hardened experimental binaries
+        run: |
+          set -euo pipefail
+          mkdir -p kernelsu
+          cp dist/ksud-next-e3q-S928USQU6EZIF-hardened-susfs kernelsu/
+          (cd dist && zip -q -j ../kernelsu/susfs-hardened-e3q-S928USQU6EZIF.zip android14-6.1_kernelsu.ko android14-6.1_susfs_guard_lkm.ko BUILD-REPORT.txt)
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add kernelsu/
+          git commit -m 'Publish hardened EZIF SUSFS binaries [skip ci]'
+          git push origin HEAD:${GITHUB_REF_NAME}
+      - name: Upload hardened EZIF pair
+        uses: actions/upload-artifact@v4
+        with:
+          name: ezif-hardened-susfs-ksud-pair
+          path: dist/
+          if-no-files-found: error

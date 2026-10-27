@@ -23,3 +23,5 @@ participate in matching.
 
 `targets-v2.json` remains unchanged for released 0.2.3 clients. New clients
 read only schema version 3.
+
+Experimental entries may be published under the top-level `experimentalPayloads` array. These entries are explicitly manual-only and are not candidates for automatic exploit/KernelSU selection. They may expose a module-specific artifact such as `susfsModule` instead of the standard exploit/KernelSU pair.

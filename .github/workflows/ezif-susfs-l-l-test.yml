@@ -1,0 +1,170 @@
+name: Build EZIF Samsung SUSFS L-L test module
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SUSFS_SOURCE_REPO: https://github.com/yettocom/susfs-lkm-L-L-module.git
+  SUSFS_SOURCE_COMMIT: b9b6b9603e30f6bd2c899a8e8bfe34d65747de35
+  SUSFS_RELEASE_ZIP: https://github.com/yettocom/susfs-lkm-L-L-module/releases/download/v2.3.0-r18.4/susfs-lkm-module-v2.3.0-r18.4-L-L-arm64.zip
+  SUSFS_RELEASE_ZIP_SHA256: 9d660839867f6934eea59cb7643ff9f16a478822580565550963fd53c9c0d2bd
+  TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
+  TARGET_KMI: android14-6.1
+
+jobs:
+  build:
+    name: Build and package the exact EZIF LKM
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
+      options: --privileged
+    steps:
+      - name: Check out the payload repository
+        uses: actions/checkout@v4
+
+      - name: Build the Samsung L-L SUSFS module against EZIF
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KDIR:-}"
+          test -f "$KDIR/Makefile"
+          test -f "$KDIR/include/generated/utsrelease.h"
+          test -f "$KDIR/include/config/kernel.release"
+
+          source_root="$RUNNER_TEMP/susfs-lkm"
+          git clone "$SUSFS_SOURCE_REPO" "$source_root"
+          git -C "$source_root" checkout --detach "$SUSFS_SOURCE_COMMIT"
+          test "$(git -C "$source_root" rev-parse HEAD)" = "$SUSFS_SOURCE_COMMIT"
+          install -m 0644 "$GITHUB_WORKSPACE/kernel/susfs_arm64.h" \
+            "$source_root/kernel/susfs_arm64.h"
+
+          sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' \
+            "$KDIR/include/generated/utsrelease.h"
+          printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
+          grep -Fq "$TARGET_RELEASE" "$KDIR/include/generated/utsrelease.h"
+          grep -Fq "$TARGET_RELEASE" "$KDIR/include/config/kernel.release"
+
+          make_log="$RUNNER_TEMP/susfs-build.log"
+          set +e
+          make -C "$KDIR" \
+            M="$source_root/kernel" \
+            src="$source_root/kernel" \
+            ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+            KERNELRELEASE="$TARGET_RELEASE" \
+            SUSFS_SAMSUNG_NO_PATCH_TEXT=1 \
+            KBUILD_MODPOST_WARN=1 \
+            modules -j"$(nproc)" >"$make_log" 2>&1
+          build_rc=$?
+          set -e
+          tail -n 100 "$make_log"
+          if [[ "$build_rc" -ne 0 && ! -s "$source_root/kernel/susfs_samsung_lkm.ko" ]]; then
+            exit "$build_rc"
+          fi
+
+          module="$source_root/kernel/susfs_samsung_lkm.ko"
+          test -s "$module"
+          llvm-strip -d "$module"
+          llvm-readelf -p .modinfo "$module" > "$RUNNER_TEMP/susfs-modinfo.txt"
+          llvm-readelf -SW "$module" > "$RUNNER_TEMP/susfs-sections.txt"
+          grep -Fq "$TARGET_RELEASE" "$RUNNER_TEMP/susfs-modinfo.txt"
+          grep -Eq '__versions.* 000000 ' "$RUNNER_TEMP/susfs-sections.txt"
+
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          install -m 0644 "$module" "$GITHUB_WORKSPACE/out/susfs_samsung_lkm-$TARGET_KMI.ko"
+          sha256sum "$GITHUB_WORKSPACE/out/susfs_samsung_lkm-$TARGET_KMI.ko" \
+            > "$GITHUB_WORKSPACE/out/SUSFS-MODULE-SHA256SUM"
+
+      - name: Package an EZIF-only KernelSU module
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_zip="$RUNNER_TEMP/susfs-l-l-base.zip"
+          curl --fail --location --retry 3 "$SUSFS_RELEASE_ZIP" --output "$base_zip"
+          echo "$SUSFS_RELEASE_ZIP_SHA256  $base_zip" | sha256sum --check --status
+
+          python3 - "$base_zip" "$GITHUB_WORKSPACE/out" "$TARGET_KMI" "$TARGET_RELEASE" <<'PY'
+          import hashlib
+          import json
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          base_zip, out_dir, kmi, release = sys.argv[1:]
+          out_dir = Path(out_dir)
+          module_name = f"lib/susfs_samsung_lkm-{kmi}.ko"
+          built_module = out_dir / f"susfs_samsung_lkm-{kmi}.ko"
+          archive_path = out_dir / "susfs-lkm-module-EZIF-S928U1-test-arm64.zip"
+          replacements = {
+              "kmis": (kmi + "\n").encode(),
+              "lib/releases": (f"{kmi} {release}\n").encode(),
+              module_name: built_module.read_bytes(),
+          }
+
+          with zipfile.ZipFile(base_zip) as source, zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as target:
+              names = set(source.namelist())
+              if not {"kmis", "lib/releases", "module.prop", "provenance.json", module_name}.issubset(names):
+                  raise SystemExit("base release ZIP is missing expected module files")
+              for info in source.infolist():
+                  name = info.filename
+                  if name.startswith("lib/susfs_samsung_lkm-") and name.endswith(".ko") and name != module_name:
+                      continue
+                  if name in replacements:
+                      data = replacements.pop(name)
+                  elif name == "module.prop":
+                      text = source.read(name).decode()
+                      updates = (
+                          ("version=v2.3.0-r18.4", "version=v2.3.0-r18.4-ezif-test"),
+                          ("versionCode=2", "versionCode=3"),
+                          ("Late-load SUSFS loader for Samsung RKP-safe.",
+                           "TEST ONLY: EZIF S24 Ultra kernel-specific SUSFS LKM; unvalidated."),
+                      )
+                      for old, new in updates:
+                          if text.count(old) != 1:
+                              raise SystemExit(f"unexpected module.prop content: missing unique {old!r}")
+                          text = text.replace(old, new, 1)
+                      data = text.encode()
+                  elif name == "provenance.json":
+                      provenance = json.loads(source.read(name))
+                      provenance["ezif_test_target"] = {
+                          "model": "SM-S928U1",
+                          "firmware": "S928U1UEU6EZIF",
+                          "kernel_release": release,
+                          "kmi": kmi,
+                          "module_source_commit": "b9b6b9603e30f6bd2c899a8e8bfe34d65747de35",
+                          "build_mode": "SUSFS_SAMSUNG_NO_PATCH_TEXT=1",
+                          "status": "experimental; exact-device load not yet validated",
+                      }
+                      data = (json.dumps(provenance, indent=2) + "\n").encode()
+                  else:
+                      data = source.read(name)
+                  target.writestr(info, data)
+              if replacements:
+                  raise SystemExit(f"unwritten package entries: {sorted(replacements)}")
+
+          digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+          (out_dir / "PACKAGE-SHA256SUM").write_text(f"{digest}  {archive_path.name}\n")
+          report = {
+              "device": "Samsung Galaxy S24 Ultra SM-S928U1",
+              "firmware": "S928U1UEU6EZIF",
+              "kernel_release": release,
+              "kmi": kmi,
+              "source_repository": "https://github.com/yettocom/susfs-lkm-L-L-module",
+              "source_commit": "b9b6b9603e30f6bd2c899a8e8bfe34d65747de35",
+              "base_package_sha256": "9d660839867f6934eea59cb7643ff9f16a478822580565550963fd53c9c0d2bd",
+              "module_sha256": hashlib.sha256(built_module.read_bytes()).hexdigest(),
+              "package_sha256": digest,
+              "status": "experimental; not listed in the payload feed; requires device validation",
+          }
+          (out_dir / "BUILD-REPORT.json").write_text(json.dumps(report, indent=2) + "\n")
+          PY
+
+      - name: Upload the manual test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: susfs-l-l-ezif-s928u1-test
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
