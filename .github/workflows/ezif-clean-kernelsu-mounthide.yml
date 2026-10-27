@@ -454,8 +454,8 @@ jobs:
           # init aliases used by separate LKM builds; retaining generic names here can preprocess to
           # the kernel module's reserved _init symbol.
           init_symbol, exit_symbol = "ksu_susfs_module_init", "ksu_susfs_module_exit"
-          text = re.sub(r"\\b" + re.escape(original_init_symbol) + r"\\b", init_symbol, text)
-          text = re.sub(r"\\b" + re.escape(original_exit_symbol) + r"\\b", exit_symbol, text)
+          text = re.sub(r"\b" + re.escape(original_init_symbol) + r"\b", init_symbol, text)
+          text = re.sub(r"\b" + re.escape(original_exit_symbol) + r"\b", exit_symbol, text)
 
           for symbol in (init_symbol, exit_symbol):
               # Called from another file now, and still living in the init/exit sections those callers
