@@ -77,6 +77,8 @@ jobs:
           curl --fail --location --retry 3 --retry-delay 2 --output "$archive" https://dl.google.com/android/repository/android-ndk-r29-linux.zip
           unzip -q -o "$archive" -d "$RUNNER_TEMP"
           echo "ANDROID_NDK_ROOT=$RUNNER_TEMP/android-ndk-r29" >> "$GITHUB_ENV"
+      - name: Install Rust Android target
+        run: rustup target add aarch64-linux-android
       - name: Checkout hardened KernelSU-Next userspace and embed assets
         run: |
           set -euo pipefail
