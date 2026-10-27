@@ -497,5 +497,27 @@
         "size": 4179352
       }
     }
+  ],
+  "experimentalPayloads": [
+    {
+      "payloadId": "e3q-S928USQU6EZIF-susfs-l-l",
+      "displayName": "EXPERIMENTAL | Galaxy S24 Ultra SM-S928U1 | EZIF | Samsung SUSFS L-L module",
+      "models": [
+        "SM-S928U1"
+      ],
+      "kernelVersions": [
+        "6.1.162"
+      ],
+      "manualOnly": true,
+      "experimental": true,
+      "firmware": "S928U1UEU6EZIF",
+      "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
+      "susfsModule": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/susfs-l-l-ezif-test/kernelsu/susfs-l-l-ezif-s928u1-test-arm64.zip",
+        "size": 220339,
+        "sha256": "d36e9e102c2778ba4f5c6341f378c71200c6a854679e5aa8666f018ea5f346bd"
+      },
+      "notes": "Experimental manual-only Samsung SUSFS L-L package. Not used by automatic Root My Galaxy payload selection."
+    }
   ]
 }
