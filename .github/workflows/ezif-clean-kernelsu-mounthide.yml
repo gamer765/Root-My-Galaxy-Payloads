@@ -876,7 +876,7 @@ jobs:
   publish_s24u_payload:
     name: publish experimental S24 Ultra payload
     needs: daemon
-    if: inputs.publish_s24u
+    if: inputs.publish_s24u || (github.event_name == 'push' && github.ref == 'refs/heads/ezif-kernelSU-clean-mounthide-test')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main payload feed
