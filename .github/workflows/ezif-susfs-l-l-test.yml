@@ -40,6 +40,8 @@ jobs:
           git clone "$SUSFS_SOURCE_REPO" "$source_root"
           git -C "$source_root" checkout --detach "$SUSFS_SOURCE_COMMIT"
           test "$(git -C "$source_root" rev-parse HEAD)" = "$SUSFS_SOURCE_COMMIT"
+          install -m 0644 "$GITHUB_WORKSPACE/kernel/susfs_arm64.h" \
+            "$source_root/kernel/susfs_arm64.h"
 
           sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' \
             "$KDIR/include/generated/utsrelease.h"
