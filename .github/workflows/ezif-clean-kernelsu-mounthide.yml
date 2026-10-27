@@ -141,6 +141,54 @@ jobs:
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE/KernelSU"
           git -C KernelSU apply --verbose "$GITHUB_WORKSPACE/$PATCH"
+          # The clean v3.4.2 tag does not carry the fork-specific Samsung early-return/late-load
+          # wiring. Keep its RKP path complete by registering SUSFS AVC spoof in both paths.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manager = Path("KernelSU/kernel/hook/syscall_hook_manager.c")
+          text = manager.read_text()
+          start = text.find("if (ksu_dispatcher_nr < 0)")
+          if start >= 0:
+              opening = text.find("{", start)
+              depth = 0
+              end = None
+              for i in range(opening, len(text)):
+                  if text[i] == "{":
+                      depth += 1
+                  elif text[i] == "}":
+                      depth -= 1
+                      if depth == 0:
+                          end = i
+                          break
+              if end is None:
+                  raise SystemExit("cannot parse Samsung dispatcher fallback")
+              body = text[start:end]
+              if "ksu_avc_spoof_init();" not in body:
+                  pos = body.rfind("return;")
+                  if pos < 0:
+                      raise SystemExit("Samsung dispatcher fallback has no early return")
+                  body = body[:pos] + "ksu_avc_spoof_init();\\n        " + body[pos:]
+                  text = text[:start] + body + text[end:]
+                  manager.write_text(text)
+
+          init = Path("KernelSU/kernel/core/init.c")
+          text = init.read_text()
+          if "extern void ksu_avc_spoof_late_init(void);" not in text:
+              text = text.replace("#include <linux/export.h>", "#include <linux/export.h>\\nextern void ksu_avc_spoof_late_init(void);", 1)
+          start = text.find("if (ksu_late_loaded) {")
+          if start < 0:
+              raise SystemExit("clean KernelSU-Next late-load branch is missing")
+          end = text.find("} else {", start)
+          body = text[start:end if end >= 0 else len(text)]
+          anchor = "ksu_boot_completed = true;"
+          if anchor not in body:
+              raise SystemExit("late-load completion anchor is missing")
+          if "ksu_avc_spoof_late_init();" not in body:
+              body = body.replace(anchor, anchor + "\\n        ksu_avc_spoof_late_init();", 1)
+              text = text[:start] + body + text[start + len(body):]
+          init.write_text(text)
+          PY
           python3 RushPayloads/tools/check_rkp_branch.py --self-test
           python3 RushPayloads/tools/check_rkp_branch.py --tree KernelSU
 
