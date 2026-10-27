@@ -601,7 +601,7 @@ jobs:
           nl -ba core/init.c | sed -n '95,120p;205,220p'
           make -C "$KDIR" M="$PWD" src="$PWD" ARCH=arm64 LLVM=1 LLVM_IAS=1 KERNELRELEASE="$TARGET_RELEASE" \
             CONFIG_KSU=m CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y \
-            CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y SKIP_BTF=1 KBUILD_SKIP_BTF=1 KCFLAGS="-fno-stack-protector" modules -j"$(nproc)" \
+            CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y CONFIG_DEBUG_INFO_BTF_MODULES=n CONFIG_DEBUG_INFO_BTF=n SKIP_BTF=1 KBUILD_SKIP_BTF=1 KCFLAGS="-fno-stack-protector" modules -j"$(nproc)" \
             2>&1 | tee /tmp/kbuild.log || { rc=$?; tail -120 /tmp/kbuild.log; exit "$rc"; }
           test -s kernelsu.ko
           llvm-readelf -p .modinfo kernelsu.ko | grep -Fq "$TARGET_RELEASE"
