@@ -449,7 +449,13 @@ jobs:
               for line in lines_with(r"module_(init|exit)"):
                   print("   ", line)
               raise SystemExit("susfs_main.c: could not read both module_init() and module_exit()")
-          init_symbol, exit_symbol = init_call.group(1), exit_call.group(1)
+          original_init_symbol, original_exit_symbol = init_call.group(1), exit_call.group(1)
+          # Give the embedded entry points private, collision-free names. Some SUSFS headers define
+          # init aliases used by separate LKM builds; retaining generic names here can preprocess to
+          # the kernel module's reserved _init symbol.
+          init_symbol, exit_symbol = "ksu_susfs_module_init", "ksu_susfs_module_exit"
+          text = re.sub(r"\\b" + re.escape(original_init_symbol) + r"\\b", init_symbol, text)
+          text = re.sub(r"\\b" + re.escape(original_exit_symbol) + r"\\b", exit_symbol, text)
 
           for symbol in (init_symbol, exit_symbol):
               # Called from another file now, and still living in the init/exit sections those callers
@@ -575,8 +581,6 @@ jobs:
           sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' "$KDIR/include/generated/utsrelease.h"
           printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
           cd KernelSU/kernel
-          echo "generated KernelSU init context:"
-          nl -ba core/init.c | sed -n '200,225p'
           make -C "$KDIR" M="$PWD" src="$PWD" ARCH=arm64 LLVM=1 LLVM_IAS=1 KERNELRELEASE="$TARGET_RELEASE" \
             CONFIG_KSU=m CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y \
             CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y SKIP_BTF=1 KCFLAGS="-fno-stack-protector" modules -j"$(nproc)" \
