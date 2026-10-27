@@ -888,12 +888,12 @@ jobs:
       - name: Download validated daemon
         uses: actions/download-artifact@v7
         with:
-          name: ksud-susfs-\${{ inputs.kmi || 'android14-6.1' }}
+          name: ksud-susfs-${{ inputs.kmi || 'android14-6.1' }}
           path: /tmp/ksud
 
       - name: Install daemon and add experimental payload
         env:
-          KSU_REF: \${{ inputs.ksu_ref || 'v3.4.2' }}
+          KSU_REF: ${{ inputs.ksu_ref || 'v3.4.2' }}
         run: |
           set -eu
           name=ksud-next-e3q-S928USQU6EZIF-clean-mounthide
@@ -938,9 +938,9 @@ jobs:
                         if item.get("payloadId") == "e3q-S928USQU6EZIF-susfs-l-l"), len(payloads))
           payloads.insert(index, entry)
           feed["payloads"] = payloads
-          with open(path, "w", encoding="utf-8", newline="\\n") as handle:
+          with open(path, "w", encoding="utf-8", newline="\n") as handle:
               json.dump(feed, handle, indent=2, ensure_ascii=False)
-              handle.write("\\n")
+              handle.write("\n")
           print(json.dumps(entry, indent=2))
           PY
 
