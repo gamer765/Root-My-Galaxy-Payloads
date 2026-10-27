@@ -1,6 +1,8 @@
 name: Build EZIF Samsung SUSFS L-L test module
 
 on:
+  push:
+    branches: [susfs-l-l-ezif-test]
   workflow_dispatch:
 
 permissions:
