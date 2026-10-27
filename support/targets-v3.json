@@ -512,14 +512,14 @@
       "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
       "susfsModule": {
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/susfs-hardened-e3q-S928USQU6EZIF.zip",
-        "size": 316894,
-        "sha256": "c8504b48843243b762fd5f2d922ec009e3fc8e0cc5d4f278daffdc0b125a0f62"
+        "size": 320796,
+        "sha256": "558e1afb38bcd339844e032aa6b7fad183a14540c1c8b136865aa6d6c9727211"
       },
-      "notes": "Experimental manual-only hardened SUSFS KernelSU-Next package. Built from KernelSU-Next susfs-x64-test lineage c3399391 with exact EZIF release matching; hardware load remains unvalidated.",
+      "notes": "Experimental manual-only hardened SUSFS KernelSU-Next package rebuilt with LiamJ74's Samsung KDP/RKP/DEFEX patch applied; exact EZIF hardware load remains unvalidated.",
       "kernelsu": {
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-hardened-susfs",
-        "size": 4471440,
-        "sha256": "acdab47ce3830bbc7dffbcc6dc6a53b012501b5133be24cf31bf6914d0821808"
+        "size": 4476816,
+        "sha256": "8e050a9247f8ebdc7c43456fd7351614479fd530185b131ca42c313667605f27"
       },
       "exploit": {
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
