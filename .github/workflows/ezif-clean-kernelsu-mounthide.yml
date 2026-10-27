@@ -493,7 +493,7 @@ jobs:
               wired.append(call)
           core = pathlib.Path("KernelSU/kernel/core/init.c")
           core_text = core.read_text()
-          core_text, removed = re.subn(r"^[ \\t]*_init\\(\\);[ \\t]*\\n", "", core_text, flags=re.M)
+          core_text, removed = re.subn(r"^[ \t]*_init\(\);[ \t]*\n", "", core_text, flags=re.M)
           if removed:
               print(f"removed {removed} orphan _init() call(s) from the late-load path")
           if core_text.count("(void)ksu_susfs_module_init();") != 1:
