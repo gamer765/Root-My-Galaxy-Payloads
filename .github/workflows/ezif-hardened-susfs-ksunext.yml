@@ -48,7 +48,7 @@ jobs:
             git -C "$root" add -A
           fi
           test ! -f "$root/kernel/core/init.c.rej"
-          grep -R -n "<<<<<<<\\|=======\\|>>>>>>>" "$root/kernel" && exit 1 || true
+          grep -R -n -E "^(<<<<<<< |=======|>>>>>>> )" "$root/kernel" && exit 1 || true
           sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' "$KDIR/include/generated/utsrelease.h"
           printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
           mkdir -p "$GITHUB_WORKSPACE/out"
