@@ -1,0 +1,791 @@
+name: EZIF clean KernelSU-Next 3.4.2 + SUSFS + mount_hide
+
+# One module that is both the root and the hiding: our Samsung-patched KernelSU-Next with upstream
+# susfs's kernel sources compiled into it, and this repository's kprobe LSM layer where they would
+# otherwise install their own.
+#
+# ## Why this exists next to `susfs-lkm.yml`
+#
+# That workflow publishes susfs as a *companion*: a second module, loaded after root, with its own
+# copies of the parts our KernelSU module already has. This one fuses the two, so a phone that roots
+# with this payload has susfs without a second load - and so the two halves cannot disagree about the
+# techniques that only exist here:
+#
+#   - our `lsm_hook.c` (`RushPayloads/susfs-lkm/lsm_hook.c`): a hook is installed by a `kprobe` on the SELinux
+#     implementation, in a `pre_handler`, with an instruction-pointer redirect and a `__nocfi`
+#     trampoline. Upstream inserts a `struct security_hook_list` into `security_hook_heads`, which is
+#     `__lsm_ro_after_init` here - measured: `-14` (`EFAULT`) on this project's devices.
+#   - a `kretprobe` with per-instance data was tried first and reset an SM-S938U1 whenever more than one
+#     probe was installed. The pre-handler shape above is what this project's own delta uses
+#     (`selinux_hide`), and it is the one that arms thirteen hooks and unloads cleanly.
+#   - `CONFIG_KSU_SAMSUNG_*` in our delta is the rest of the same story: no text patching where the
+#     hypervisor forbids it, kretprobes instead, and the KDP/DEFEX work.
+#
+# ## What this workflow does, in the order it matters
+#
+#   1. our patched KernelSU-Next at the tag the patch names, and the same Samsung config the pair job
+#      builds with;
+#   2. upstream susfs's `kernel/` sources at a pinned commit, copied into `KernelSU/kernel/susfs/`;
+#   3. **our** `lsm_hook.c` over theirs, and our sanity marker checked so a build cannot silently be
+#      upstream's install path with our name on it;
+#   4. their `module_init()` removed and their `susfs_init()` called from KernelSU's own init instead -
+#      one module has one init, and this is the merge's one structural edit;
+#   5. the objects appended to `KernelSU/kernel/Kbuild`, then the build, then `modinfo` and strings
+#      checks: KSU's own name present, `susfs_guard_lkm`'s absent (this is not that module), and the
+#      susfs entry points present.
+#
+# It is a build, not a publish: the artifacts land as workflow artifacts until the merge is known to
+# compile and load, which is the same order the companion tier was built in.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ksu_ref:
+        description: 'KernelSU-Next tag to build (needs a matching kernelsu/patches patch)'
+        required: false
+        default: 'v3.4.2'
+      susfs_ref:
+        description: 'Upstream susfs commit to merge in'
+        required: false
+        default: '85ef920ccf27682a2a9089b4676547f691b92828'
+      kmi:
+        description: 'KMI to build for'
+        required: false
+        default: 'android14-6.1'
+      ddk_release:
+        description: 'DDK image release'
+        required: false
+        default: '20260313'
+      target_release:
+        description: 'Exact EZIF kernel release for the S24 Ultra module'
+        required: false
+        default: '6.1.162-android14-11-34343818-abS928USQU6EZIF'
+      publish:
+        description: 'Commit the merged daemon and support/kernelsu-generic-susfs.json'
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [ezif-kernelSU-clean-mounthide-test]
+    paths:
+      - '.github/workflows/ezif-clean-kernelsu-mounthide.yml'
+
+# Write, because a publish is a commit: the daemon into `kernelsu/` and its entry. That is also why the
+# first attempt at this failed at the last step - the token had read only, and `git push` was denied with
+# a 403 after the build, the checks and the commit had all succeeded.
+permissions:
+  contents: write
+
+env:
+  SUSFS_REPO: inforcqb/susfs4ksu-lkm
+  KSU_REF: ${{ inputs.ksu_ref || 'v3.4.2' }}
+  KMI: ${{ inputs.kmi || 'android14-6.1' }}
+  TARGET_RELEASE: ${{ inputs.target_release || '6.1.162-android14-11-34343818-abS928USQU6EZIF' }}
+  # Pinned rather than branch-following, which is where this differs from the tier's variants: a merge is
+  # a build, and a moving ref would make a daemon's provenance a different answer every dispatch. This
+  # pin is the control-node su-gate work (#106, #109) and leaves `kernel/lsm_hook.c` untouched, so the
+  # `samsung` overlay's surface still fits it; the DDK run is what proves the merge compiles.
+  SUSFS_REF: ${{ inputs.susfs_ref || '85ef920ccf27682a2a9089b4676547f691b92828' }}
+  # Follows the tag rather than naming one, which is what `ksu-build.yml` does with the same value: a
+  # run for a release nobody has built before used to fail at the patch step with a file that is not
+  # there, and the fix is a name derived from the input rather than an edit to this line.
+  #
+  # One ref resolves to something other than that delta: `test`, KernelSU-Next's own line, whose tree
+  # carries the delta already and whose name answers here with the compat patch `ksu-build.yml` applies
+  # to it. Kept as one expression rather than a condition, because the fused tree wants the same two
+  # fixes either way - and a run for a ref with no patch of ours fails at the apply, by name.
+  PATCH: LiamPayloads/kernelsu/patches/KernelSU-Next-${{ inputs.ksu_ref || 'v3.4.2' }}-samsung-kdp-rkp-defex.patch
+
+jobs:
+  build:
+    name: kernelsu+susfs (${{ inputs.kmi || 'android14-6.1' }})
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:${{ inputs.kmi || 'android14-6.1' }}-${{ inputs.ddk_release || '20260313' }}
+      options: --privileged
+    steps:
+      - name: Checkout payloads
+        uses: actions/checkout@v7
+
+      - name: Checkout Rush SUSFS integration files
+        uses: actions/checkout@v7
+        with:
+          repository: rushiranpise/Root-My-Galaxy-Payloads
+          ref: 0baf8e32d916237620cf1a3b41b9844226183bc1
+          path: RushPayloads
+
+      - name: Checkout Liam mount_hide and bind-source fix
+        uses: actions/checkout@v7
+        with:
+          repository: LiamJ74/Root-My-Galaxy-Payloads
+          ref: e65af33032bee63617465069461e46dee744b87e
+          path: LiamPayloads
+
+      - name: Checkout KernelSU-Next
+        uses: actions/checkout@v7
+        with:
+          repository: KernelSU-Next/KernelSU-Next
+          ref: ${{ env.KSU_REF }}
+          path: KernelSU
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Checkout upstream susfs
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.SUSFS_REPO }}
+          ref: ${{ env.SUSFS_REF }}
+          path: susfs-src
+
+      - name: Apply our Samsung delta
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/KernelSU"
+          git -C KernelSU apply --verbose "$GITHUB_WORKSPACE/$PATCH"
+          python3 RushPayloads/tools/check_rkp_branch.py --self-test
+          python3 RushPayloads/tools/check_rkp_branch.py --tree KernelSU
+
+      - name: Merge their sources, with our hook layer
+        run: |
+          set -eu
+          mkdir -p KernelSU/kernel/susfs
+          # Emptied first, because from v3.4.2 the tag ships this directory itself: upstream vendored
+          # the same project's sources at whatever commit it was on, so the tree already holds a
+          # `patch_memory.c` - the one file below that is deliberately *not* copied - and the link then
+          # finds `phys_from_virt` and `ksu_patch_text` defined twice. Measured on the first v3.4.2 run.
+          # Whatever that tree is, this build is the pin below plus this repository's own two files, and
+          # a leftover from the tag is neither.
+          rm -f KernelSU/kernel/susfs/*
+          # Their sources, minus three files:
+          #
+          #   lsm_hook.c        upstream's security_hook_heads install path; ours is the kprobe route
+          #   patch_memory.c    KernelSU's is the one with this project's Samsung work in it, and this is
+          #                     the very code whose read-only write cannot land on these devices
+          #                     (`phys_from_virt`, `ksu_patch_text`). Nothing here calls its exports.
+          #
+          # Their `symbol_resolver.c` is kept and renamed below instead: it carries two helpers the tree
+          # does not have, which a later run named (`ksu_find_symbol_all`, `ksu_kallsyms_lookup_name`).
+          for f in susfs-src/kernel/*.c susfs-src/kernel/*.h; do
+            case "$(basename "$f")" in
+              lsm_hook.c | patch_memory.c) continue ;;
+            esac
+            cp "$f" KernelSU/kernel/susfs/
+          done
+          cp RushPayloads/susfs-lkm/lsm_hook.c KernelSU/kernel/susfs/lsm_hook.c
+          # The try_umount layer is this repository's rather than the fork's: two files, copied in
+          # the same way, and given a command and a call site by the wiring step below.  They have
+          # to be here before "Objects into Kbuild", which builds its object list from `ls
+          # susfs/*.c` and therefore only sees what is already in this directory.
+          cp RushPayloads/susfs-lkm/susfs_try_umount.c KernelSU/kernel/susfs/susfs_try_umount.c
+          cp RushPayloads/susfs-lkm/susfs_try_umount.h KernelSU/kernel/susfs/susfs_try_umount.h
+          # Upstream resolves the cache-flush helper at run time now and calls
+          # `ksu_patch_memory_init()` from susfs_main.c before any layer patches, while that function
+          # lives in the one file this merge does not take - their patch_memory.c, because the tree's
+          # copy carries the Samsung work and both define phys_from_virt/ksu_patch_text.  Here the
+          # patch and its flush are KernelSU's own, inside ksu_patch_text(), so the fused tree
+          # supplies the initialiser itself rather than dragging the second copy in.
+          cp RushPayloads/susfs-lkm/patch_memory_fused.c KernelSU/kernel/susfs/patch_memory_fused.c
+          # Exactly one definition, checked rather than assumed: a second one is the duplicate-symbol
+          # link failure this merge already hit once, and none is the undefined symbol the symbol
+          # check refuses - and a symbol check only names the first it finds.
+          # Definitions, not mentions: the header declares the same name, so the match is anchored to
+          # a line that is the definition and is limited to .c files.  A loose pattern counted the
+          # declaration and failed the first run of this check with "found 2".
+          definitions=$(grep -rl --include='*.c' '^int ksu_patch_memory_init(void)$' KernelSU/kernel/susfs | wc -l)
+          if [ "$definitions" != "1" ]; then
+            echo "::error::ksu_patch_memory_init must be defined exactly once in the merged tree (found $definitions)"
+            grep -rn "ksu_patch_memory_init" KernelSU/kernel/susfs | head -10
+            exit 1
+          fi
+
+          # `symbol_resolver.c` stays, because two of its exports exist nowhere else - the previous run's
+          # symbol check named them (`ksu_find_symbol_all`, `ksu_kallsyms_lookup_name`). What it must not
+          # keep are the five names KernelSU also defines: those are the same functions twice, and the
+          # tree's copies are the ones with this project's Samsung work in them. Renaming their side
+          # moves both the definitions and their callers together, so no susfs source reaches across.
+          for pair in \
+            "find_kernel_symbol_exact:susfs_find_kernel_symbol_exact" \
+            "ksu_resolve_symbol_for_functable_hook:susfs_resolve_symbol_for_functable_hook" \
+            "ksu_init_symbol_resolver:susfs_init_symbol_resolver" \
+            "scan_call_to:susfs_scan_call_to" \
+          ; do
+            from="${pair%%:*}"; to="${pair##*:}"
+            sed -i "s/\\b${from}\\b/${to}/g" KernelSU/kernel/susfs/*.c KernelSU/kernel/susfs/*.h
+          done
+          # Checked, not assumed: a rename that missed a caller is an undefined symbol later, and a
+          # rename that leaked into KernelSU's own tree would change its behaviour instead.
+          if grep -rqE "\bksu_init_symbol_resolver\(" KernelSU/kernel/susfs; then
+            echo "::error::a susfs source still calls KernelSU's resolver initialiser"; exit 1
+          fi
+          # The renamed form is what must not appear in KernelSU's tree - not the original name, which is
+          # KernelSU's own and is expected there in quantity. An earlier version of this check looked for
+          # the original and failed every run for that reason.
+          if grep -rqE "susfs_(find_kernel_symbol_exact|scan_call_to|resolve_symbol_for_functable_hook|init_symbol_resolver)" \
+               KernelSU/kernel/core KernelSU/kernel/infra KernelSU/kernel/hook 2>/dev/null; then
+            echo "::error::the rename leaked into KernelSU's own sources"; exit 1
+          fi
+
+          # Our layer's exported names, moved out of KernelSU's namespace. KernelSU-Next has its own
+          # `ksu_lsm_hook()` family, used by its own features (our delta's `selinux_hide` patches
+          # `selinux_setprocattr` through it), and the linker named every one of them as a duplicate.
+          # Namespacing is the smaller change of the two available: ours is insert-shaped only - it
+          # refuses replace-mode by design - so making it the tree's single mechanism would silently
+          # take KernelSU's own feature hostage. Their `sus_path.c` and `susfs_main.c` are re-pointed at
+          # the namespaced entry points in the same breath, so the two sides cannot drift.
+          for pair in \
+            "ksu_lsm_hook_init:susfs_lsm_hook_init" \
+            "ksu_lsm_hook_exit:susfs_lsm_hook_exit" \
+            "ksu_register_lsm_hook:susfs_register_lsm_hook" \
+            "ksu_unregister_lsm_hook:susfs_unregister_lsm_hook" \
+            "ksu_lsm_unhook:susfs_lsm_unhook" \
+            "ksu_lsm_hook:susfs_lsm_hook" \
+          ; do
+            from="${pair%%:*}"; to="${pair##*:}"
+            sed -i "s/\\b${from}\\b/${to}/g" \
+              KernelSU/kernel/susfs/lsm_hook.c \
+              KernelSU/kernel/susfs/lsm_hook.h \
+              KernelSU/kernel/susfs/sus_path.c \
+              KernelSU/kernel/susfs/susfs_main.c
+          done
+          # The two callers, by file: `sus_path.c` registers the hooks, `susfs_main.c` owns the layer,
+          # and both names are checked so a rename that missed one side fails here rather than at the
+          # link - or worse, silently against KernelSU's own implementation.
+          grep -q "susfs_register_lsm_hook" KernelSU/kernel/susfs/sus_path.c || {
+            echo "::error::sus_path.c does not call the namespaced layer"; exit 1; }
+          grep -q "susfs_lsm_hook_init" KernelSU/kernel/susfs/susfs_main.c || {
+            echo "::error::susfs_main.c does not call the namespaced layer"; exit 1; }
+          if grep -qE "\bksu_register_lsm_hook\(|\bksu_lsm_hook_init\(" KernelSU/kernel/susfs/*.c; then
+            echo "::error::a susfs source still calls KernelSU's own LSM names"; exit 1
+          fi
+          grep -q "install path is kprobe-based" KernelSU/kernel/susfs/lsm_hook.c || {
+            echo "::error::our hook layer is not in the tree"; exit 1; }
+          if grep -q "ksu_lsm_hook_patch_slot" KernelSU/kernel/susfs/lsm_hook.c; then
+            echo "::error::the tree still holds upstream's read-only-memory install path"; exit 1
+          fi
+          ls KernelSU/kernel/susfs/ | head -40
+
+      - name: Add JingMatrix mount_hide and Liam bind-source matching fix
+        run: |
+          set -eu
+          mkdir -p KernelSU/kernel/feature
+          cp LiamPayloads/susfs-lkm/mount_hide.c KernelSU/kernel/feature/mount_hide.c
+          cp LiamPayloads/susfs-lkm/mount_hide.h KernelSU/kernel/feature/mount_hide.h
+          # Replace the upstream mount walker with Liam's version, which also checks each mount's
+          # source dentry path. This catches bind mounts whose destination is outside /data/adb.
+          cp LiamPayloads/susfs-lkm/sus_mount.c KernelSU/kernel/susfs/sus_mount.c
+          grep -q 'dentry_path_raw' KernelSU/kernel/susfs/sus_mount.c || {
+            echo "::error::the SUSFS source-path check is missing"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+
+          kbuild = Path("KernelSU/kernel/Kbuild")
+          text = kbuild.read_text()
+          anchor = "kernelsu-objs += feature/kernel_umount.o"
+          if "kernelsu-objs += feature/mount_hide.o" not in text:
+              if anchor not in text:
+                  raise SystemExit("Kbuild anchor for mount_hide object is missing")
+              text = text.replace(anchor, anchor + "\nkernelsu-objs += feature/mount_hide.o", 1)
+          if "-DKSU_FEATURE_MOUNT_HIDE=10004" not in text:
+              text += "\n# JingMatrix mount_hide feature id, kept out of retired id 5.\nccflags-y += -DKSU_FEATURE_MOUNT_HIDE=10004\n"
+          kbuild.write_text(text)
+
+          init = Path("KernelSU/kernel/core/init.c")
+          text = init.read_text()
+          include = '#include "feature/mount_hide.h"'
+          if include not in text:
+              anchor = '#include "feature/adb_root.h"'
+              if anchor not in text:
+                  raise SystemExit("init.c include anchor for mount_hide is missing")
+              text = text.replace(anchor, anchor + "\n" + include, 1)
+          if "ksu_mount_hide_init();" not in text:
+              anchor = "\tksu_feature_init();"
+              if anchor not in text:
+                  raise SystemExit("init.c feature-init anchor is missing")
+              text = text.replace(anchor, anchor + "\n\tksu_mount_hide_init();", 1)
+          if "ksu_mount_hide_exit();" not in text:
+              anchor = "\tksu_feature_exit();"
+              if anchor not in text:
+                  raise SystemExit("init.c feature-exit anchor is missing")
+              text = text.replace(anchor, "\tksu_mount_hide_exit();\n" + anchor, 1)
+          init.write_text(text)
+          print("mount_hide wired into KernelSU-Next init/exit; source-path fix installed")
+          PY
+
+      - name: The control nodes stay uncreated
+        run: |
+          # `/proc/susfs_*` is an optional mirror of the supercall interface. Upstream creates it by
+          # default and hides it per caller at run time, and hiding is an answer rather than an absence:
+          # the node still exists, so `open(..., O_PATH)` reaches it while `stat` answers ENOENT - which
+          # is exactly what the public detectors read (O_PATH/fstat, readlinkat on the pinned fd, and the
+          # getdents64 buffer during a uaccess race). Upstream's own O_PATH denial replaces sys_call_table
+          # entries, and on this project's devices that write is refused, so the denial is not there to
+          # rely on. With no node created there is nothing to open, nothing to list and nothing to leak,
+          # and control stays with the supercall the manager already uses.
+          file=KernelSU/kernel/susfs/susfs_main.c
+          # Upstream ships this file CRLF (406 CRLF lines at ba5c6d00), so an exact-line match cannot see
+          # it on a Linux runner - the first attempt at this step failed for that reason, not because the
+          # default had moved. Normalising the merged copy is the only change made to it here.
+          sed -i 's/\r$//' "$file"
+          grep -qx 'bool susfs_expose_proc = true;' "$file" || {
+            echo "::error::$file no longer declares the true default; upstream moved it and this build would ship the control nodes"
+            exit 1
+          }
+          sed -i 's/^bool susfs_expose_proc = true;$/bool susfs_expose_proc = false;/' "$file"
+          grep -qx 'bool susfs_expose_proc = false;' "$file" || {
+            echo "::error::the default did not change - the control nodes would be created"
+            exit 1
+          }
+          echo "control nodes: expose_proc defaults to false"
+
+      - name: The stat family and the dirent rewrite, without a table entry
+        run: |
+          # Upstream reaches both from a sys_call_table wrapper installed with ksu_patch_text. This
+          # kernel refuses that write, so none of its thirteen entries install (kstat_hooks_armed
+          # stays 0) and the stat spoofing and the listing rewrite are dead. Our overlay runs
+          # upstream's own post-processing from kretprobes on the syscall entry functions instead: no
+          # table entry is touched, and it arms only when the wrapper path installed nothing, so a
+          # kernel that can patch keeps the cheaper wrappers and no call is post-processed twice.
+          # Not a sys_exit tracepoint: this kernel has no syscalls tracepoint group at all, which the
+          # first version of this step armed and silently never fired.
+          set -eu
+          tp=KernelSU/kernel/susfs
+          cp RushPayloads/susfs-lkm/susfs_kp_stat.c "$tp/susfs_kp_stat.c"
+          # Upstream's post-processing is static because only its wrapper tails call it; the overlay
+          # is a second caller, so it is exported - with the declaration the overlay carries.
+          sed -i 's/^static __nocfi void susfs_kstat_post(/__nocfi void susfs_kstat_post(/' "$tp/susfs_kstat.c"
+          grep -q '^__nocfi void susfs_kstat_post(' "$tp/susfs_kstat.c" || {
+            echo "::error::susfs_kstat_post() is still static - the tracepoint overlay cannot call it"; exit 1; }
+          # The wrapper count, and the overlay's two entry points declared beside it - right above the
+          # first place either is used, which is this file's init.
+          sed -i 's/^static int kstat_hooks_armed;$/extern int susfs_kp_stat_init(void);\nextern void susfs_kp_stat_exit(void);\n\nint kstat_hooks_armed;/' "$tp/susfs_kstat.c"
+          grep -qx 'int kstat_hooks_armed;' "$tp/susfs_kstat.c" || {
+            echo "::error::kstat_hooks_armed is still static - the overlay cannot see whether the wrappers armed"; exit 1; }
+          grep -q '^extern int susfs_kp_stat_init(void);' "$tp/susfs_kstat.c" || {
+            echo "::error::the overlay's prototypes did not land in susfs_kstat.c"; exit 1; }
+          sed -i 's/^\([[:space:]]*\)if (!kstat_hooks_armed) {/\1susfs_kp_stat_init();\n\1if (!kstat_hooks_armed) {/' "$tp/susfs_kstat.c"
+          grep -q '^[[:space:]]*susfs_kp_stat_init();' "$tp/susfs_kstat.c" || {
+            echo "::error::susfs_kstat_init() does not call the tracepoint overlay"; exit 1; }
+          sed -i 's/^\([[:space:]]*\)kstat_maps_disarm();$/\1susfs_kp_stat_exit();\n\n\1kstat_maps_disarm();/' "$tp/susfs_kstat.c"
+          grep -q '^[[:space:]]*susfs_kp_stat_exit();' "$tp/susfs_kstat.c" || {
+            echo "::error::susfs_kstat_exit() does not tear the tracepoint overlay down"; exit 1; }
+          echo "kp_stat overlay: in place, post-processing on kretprobes"
+
+      - name: One module, one init, and one exit
+        run: |
+          set -eu
+          # Their tree ships as its own module, so it has its own module_init()/module_exit(); a second
+          # pair in this module is a compile error, and a `late_initcall` would run before KernelSU is
+          # up - and the umount gate asks KernelSU's predicate at load.
+          #
+          # Both calls are wired into KernelSU's own paths, and the exit one is not a courtesy: their
+          # teardown is what unregisters the kprobes our hook layer installs, and a module unloaded with
+          # those still registered leaves the kernel with callbacks into freed memory - measured, as a
+          # reset. So an anchor that cannot be found is a hard failure here, with the file's own lines
+          # printed, rather than a merge that compiles and then kills the phone on `rmmod`.
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          main = pathlib.Path("KernelSU/kernel/susfs/susfs_main.c")
+          text = main.read_text()
+
+          def lines_with(pattern):
+              return [line for line in text.splitlines() if re.search(pattern, line)]
+
+          init_call = re.search(r"^[ \t]*module_init\(([A-Za-z_]\w*)\);[ \t]*$", text, flags=re.M)
+          exit_call = re.search(r"^[ \t]*module_exit\(([A-Za-z_]\w*)\);[ \t]*$", text, flags=re.M)
+          if not init_call or not exit_call:
+              print("module_init/module_exit lines found in susfs_main.c:")
+              for line in lines_with(r"module_(init|exit)"):
+                  print("   ", line)
+              raise SystemExit("susfs_main.c: could not read both module_init() and module_exit()")
+          init_symbol, exit_symbol = init_call.group(1), exit_call.group(1)
+
+          for symbol in (init_symbol, exit_symbol):
+              # Called from another file now, and still living in the init/exit sections those callers
+              # live in. `__init`/`__exit` stay; `static` cannot.
+              pattern = r"static\s+(int|void)\s+__(init|exit)\s+" + symbol + r"\("
+              if not re.search(pattern, text):
+                  print("definitions found in susfs_main.c:")
+                  for line in lines_with(rf"\b{symbol}\b"):
+                      print("   ", line)
+                  raise SystemExit(f"susfs_main.c: no definition of {symbol}() to make visible")
+              text = re.sub(pattern, r"\1 __\2 " + symbol + "(", text)
+
+          text = re.sub(r"^[ \t]*module_(init|exit)\(\w+\);[ \t]*\n", "", text, flags=re.M)
+          main.write_text(text)
+          print(f"removed both module_ calls; this module calls {init_symbol}() and {exit_symbol}()")
+
+          wired = []
+          for path, anchor, decl, call in (
+              # KernelSU's own init and exit are not `static` at this tag - measured by the run that
+              # failed here, which printed them: `int __init kernelsu_init(void)` and
+              # `void __exit kernelsu_exit(void)` (plus a naked `kernelsu_init_early`).
+              ("KernelSU/kernel/core/init.c", "int __init kernelsu_init(void)\n{", f"extern int {init_symbol}(void);", f"(void){init_symbol}();"),
+              ("KernelSU/kernel/core/init.c", "void __exit kernelsu_exit(void)\n{", f"extern void {exit_symbol}(void);", f"(void){exit_symbol}();"),
+          ):
+              target = pathlib.Path(path)
+              body = target.read_text()
+              if anchor not in body:
+                  print(f"candidates in {path}:")
+                  for line in body.splitlines():
+                      if "kernelsu_init" in line or "kernelsu_exit" in line:
+                          print("   ", line)
+                  raise SystemExit(f"{path}: the anchor for {call} moved")
+              body = body.replace(anchor, anchor + f"\n\t{decl}\n\t{call}", 1)
+              target.write_text(body)
+              wired.append(call)
+          print("wired: " + ", ".join(wired))
+          PY
+
+      - name: Objects into Kbuild
+        run: |
+          set -eu
+          kbuild=KernelSU/kernel/Kbuild
+          cp "$kbuild" /tmp/kbuild.before
+          # The object list is written out, one entry per source file, and not built with `$(wildcard
+          # $(src)/kernel/susfs/*.c)`: that expression evaluates empty where this Kbuild is parsed, so
+          # the objects were never compiled - and the first attempt showed up as KernelSU's own symbol
+          # check reporting `Symbol 'susfs_init' not found or undefined in .../vmlinux`, which reads like
+          # a missing kernel export and is actually a missing source file. One path per object, in the
+          # shape the rest of this Kbuild uses (`core/init.o`, `feature/sucompat.o`, ...).
+          objects=$(cd KernelSU/kernel && ls susfs/*.c | sed 's/\.c$/.o/' | tr '\n' ' ')
+          if [ -z "$objects" ]; then
+            echo "::error::no susfs sources were copied into KernelSU/kernel/susfs"
+            exit 1
+          fi
+          # `-I$(srctree)/fs` is upstream's own note, verbatim: "fs/mount.h (struct mount + real_mount)
+          # is a private header; its includes are all public, so -I$(srctree)/fs is enough to reach it
+          # via #include \"mount.h\"". Without it `sus_mount.c` stops at `fatal error: 'mount.h' file not
+          # found`, which is what the previous run reported.
+          #
+          # `KSU_NEW_DCACHE_FLUSH` is the other half of their own build: 5.14+ renamed
+          # `__flush_dcache_area`/`__flush_icache_range`, and their sources `#if` on this define to pick
+          # the spelling. Their Makefile greps the tree for the old name; left undefined it evaluates as
+          # 0, which selects the pre-5.14 spelling on a 6.6 kernel.
+          kernel_src="${KERNEL_SRC:-/opt/ddk/src/${{ inputs.kmi || 'android14-6.1' }}}"
+          if [ -f "$kernel_src/arch/arm64/include/asm/cacheflush.h" ] && \
+             grep -q "__flush_dcache_area" "$kernel_src/arch/arm64/include/asm/cacheflush.h"; then
+            flush=0
+          else
+            flush=1
+          fi
+          echo "kernel source: $kernel_src -> KSU_NEW_DCACHE_FLUSH=$flush"
+          {
+            echo ''
+            echo '# SUSFS, merged: sources in kernel/susfs/, one init called from kernelsu_init().'
+            echo "kernelsu-objs += $objects"
+            echo 'ccflags-y += -I$(src)/kernel/susfs'
+            echo 'ccflags-y += -I$(srctree)/fs'
+            echo "ccflags-y += -DKSU_NEW_DCACHE_FLUSH=$flush"
+          } >> "$kbuild"
+          grep -q "kernelsu-objs += susfs/" "$kbuild" || { echo "::error::Kbuild append did not take"; exit 1; }
+          tail -4 "$kbuild"
+
+      - name: Wire try_umount (CONFIG_KSU_SUSFS_TRY_UMOUNT)
+        run: |
+          set -eu
+          # Our layer, plus the edits that make it reachable: a command id the caller's helper sends,
+          # an error reply in the field that caller reads, a line in the feature list so a SUSFS module
+          # takes the SUSFS route instead of ksud's umount list, and the call itself inside
+          # KernelSU-Next's own umount path - not in the setuid work, which the phone showed cannot
+          # work because it runs after the credentials change.  Every anchor is asserted by the script,
+          # and the greps below re-check the parts that decide whether the feature exists at all - a
+          # build that quietly skipped one would still produce a daemon, and keep the old behaviour.
+          python3 RushPayloads/tools/wire_try_umount.py
+          # Cheap, and it would have caught a dropped brace before a five-minute build did: the file
+          # this repository adds is checked for balanced braces and parens first.
+          python3 RushPayloads/tools/check_c_balance.py KernelSU/kernel/susfs/susfs_try_umount.c
+          grep -q "CONFIG_KSU_SUSFS_TRY_UMOUNT" KernelSU/kernel/susfs/susfs_supercall.c || {
+            echo "::error::the feature is not reported, so a module will not take the SUSFS route"; exit 1; }
+          grep -q "susfs_try_umount(new_uid)" KernelSU/kernel/feature/kernel_umount.c || {
+            echo "::error::the call site is missing from KernelSU-Next's umount path"; exit 1; }
+          # The object list is a glob over susfs/*.c, so this also proves the new source was copied
+          # into the merged directory where that glob can see it.
+          # The layer has to be registered in the init table, or its init never runs and the feature
+          # is reported as absent - which is what the first published daemon did, and what the phone
+          # caught.  A source check is all that can be done here; the runtime answer is the feature
+          # list on a phone.
+          grep -q "susfs_try_umount_init" KernelSU/kernel/susfs/susfs_main.c || {
+            echo "::error::the layer is not registered, so its init never runs"; exit 1; }
+          grep -q "susfs_try_umount.o" KernelSU/kernel/Kbuild || {
+            echo "::error::the new object is not in the Kbuild list"; exit 1; }
+          # Exactly one path_put, on the not-a-mount-root path.  A second one is the double put the
+          # phone caught as a WARN in mntput_no_expire called from this file's path_put, because
+          # path_umount() consumes the caller's reference.
+          puts=$(grep -c 'path_put(&path)' KernelSU/kernel/susfs/susfs_try_umount.c)
+          [ "$puts" = "1" ] || {
+            echo "::error::susfs_try_umount.c holds $puts path_put calls, expected exactly 1"; exit 1; }
+
+      - name: Build exact EZIF module from clean upstream KernelSU-Next
+        run: |
+          set -euo pipefail
+          KDIR="${KDIR:-/opt/ddk/src/${KMI}}"
+          test -f "$KDIR/Makefile" || { echo "::error::DDK kernel tree missing at $KDIR"; exit 1; }
+          sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' "$KDIR/include/generated/utsrelease.h"
+          printf '%s\\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
+          cd KernelSU/kernel
+          make -C "$KDIR" M="$PWD" src="$PWD" ARCH=arm64 LLVM=1 LLVM_IAS=1 KERNELRELEASE="$TARGET_RELEASE" \
+            CONFIG_KSU=m CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y \
+            CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y SKIP_BTF=1 KCFLAGS="-fno-stack-protector" modules -j"$(nproc)" \
+            2>&1 | tee /tmp/kbuild.log
+          test -s kernelsu.ko
+          llvm-readelf -p .modinfo kernelsu.ko | grep -Fq "$TARGET_RELEASE"
+          llvm-strings kernelsu.ko | grep -q "mount_hide"
+          llvm-strings kernelsu.ko | grep -q "susfs_init"
+          modinfo ./kernelsu.ko | head -6
+
+      - name: It is the KSU module, with susfs's entry points in it
+        run: |
+          set -eu
+          cd KernelSU/kernel
+          llvm-strings kernelsu.ko > /tmp/strings.txt || strings kernelsu.ko > /tmp/strings.txt
+          # What has to be here: KernelSU's own symbol, and susfs's half of the merge.
+          #
+          # What is *not* evidence of anything: the string `susfs_guard_lkm`, which their sources carry as
+          # their `pr_fmt` log prefix (`susfs_log.h`) and which therefore appears in any build that
+          # compiles them - the companion module used it as its module name as well, and an earlier
+          # version of this check treated the coincidence as proof of the wrong build and failed a
+          # correct one.
+          grep -q "kernelsu" /tmp/strings.txt || { echo "::error::KernelSU is not in this module"; exit 1; }
+          grep -q "susfs_init" /tmp/strings.txt || { echo "::error::susfs is not in this module"; exit 1; }
+          grep -q "sus_path" /tmp/strings.txt || { echo "::error::sus_path is not in this module"; exit 1; }
+          grep -q "susfs_register_lsm_hook" /tmp/strings.txt || {
+            echo "::error::this module does not carry the namespaced kprobe hook layer"; exit 1; }
+          echo "merged module: KernelSU + susfs, with our namespaced hook layer"
+
+      - name: Upload the module
+        uses: actions/upload-artifact@v7
+        with:
+          name: kernelsu-susfs-${{ inputs.kmi || 'android14-6.1' }}
+          path: KernelSU/kernel/kernelsu.ko
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------------------------
+  # The daemon, with that module embedded.
+  #
+  # This is the half that makes the merge reachable: the flow does not load a `.ko` from disk, it
+  # stages a daemon and the daemon late-loads the module out of **its own assets**
+  # (`aarch64/<kmi>_kernelsu.ko`). So a merged module that no daemon carries is invisible to every
+  # phone, however well it builds - which is exactly the state the module-only job left it in.
+  #
+  # The steps are the ones this repository's pair builds already use for `ksud`: the same NDK, the
+  # same rust toolchain, the same hand-written `.cargo/config.toml` (KernelSU-Next carries neither the
+  # setup script nor a template), and the same binary recovered by finding rather than naming it,
+  # because where it lands is a property of the flavour's layout.
+  # ---------------------------------------------------------------------------------------------
+  daemon:
+    name: daemon (${{ inputs.kmi || 'android14-6.1' }})
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout payloads
+        uses: actions/checkout@v7
+
+      - name: Checkout KernelSU-Next
+        uses: actions/checkout@v7
+        with:
+          repository: KernelSU-Next/KernelSU-Next
+          ref: ${{ env.KSU_REF }}
+          path: KernelSU
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download the merged module
+        uses: actions/download-artifact@v7
+        with:
+          name: kernelsu-susfs-${{ inputs.kmi || 'android14-6.1' }}
+          path: /tmp/merged
+
+      - name: The daemon picks it up from its own assets
+        run: |
+          set -eu
+          # The name is the loader's own: `ksud` asks its asset directory for
+          # `<kmi>_kernelsu.ko` after working the running kernel's KMI out, so the file has to be named
+          # for the KMI this build was made for or it is simply never found.
+          mkdir -p KernelSU/userspace/ksud/bin/aarch64
+          cp /tmp/merged/kernelsu.ko "KernelSU/userspace/ksud/bin/aarch64/${{ inputs.kmi || 'android14-6.1' }}_kernelsu.ko"
+          ls -l KernelSU/userspace/ksud/bin/aarch64/
+
+      - name: Point the suspended Kernel-SU dependencies at KernelSU2
+        run: |
+          # Same reason as the pair build: the `Kernel-SU` organisation is suspended, so its git
+          # dependencies 404 and the lockfile cannot be fetched without this.
+          cd KernelSU
+          mapfile -t manifests < <(find . -name Cargo.toml -o -name Cargo.lock | grep -v '/target/')
+          sed -i 's#github\.com/Kernel-SU/#github.com/KernelSU2/#g' "${manifests[@]}"
+
+      - name: Android NDK
+        run: |
+          curl -sSLo /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r28c-linux.zip
+          unzip -q /tmp/ndk.zip -d /tmp
+          echo "ANDROID_NDK_HOME=/tmp/android-ndk-r28c" >> "$GITHUB_ENV"
+
+      - name: Rust toolchain and target
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-linux-android
+
+      - name: libclang for bindgen
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libclang-dev
+          clanglib=$(llvm-config --libdir 2>/dev/null || true)
+          if [ -z "$clanglib" ] || [ ! -e "$clanglib/libclang.so" ]; then
+            clanglib=$(dirname "$(find /usr/lib/llvm-* -name 'libclang.so*' -printf '%p\n' 2>/dev/null | head -1)")
+          fi
+          echo "LIBCLANG_PATH=$clanglib" >> "$GITHUB_ENV"
+          echo "libclang: $clanglib"
+
+      - name: Cargo config for the NDK
+        run: |
+          ndk="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+          mkdir -p KernelSU/.cargo
+          cat > KernelSU/.cargo/config.toml <<EOF
+          [target.aarch64-linux-android]
+          linker = "$ndk/bin/aarch64-linux-android26-clang"
+
+          [env]
+          CC_aarch64_linux_android = "$ndk/bin/aarch64-linux-android26-clang"
+          CXX_aarch64_linux_android = "$ndk/bin/aarch64-linux-android26-clang++"
+          AR_aarch64_linux_android = "$ndk/bin/llvm-ar"
+          BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android = "--sysroot=$ndk/sysroot -I$ndk/sysroot/usr/include/aarch64-linux-android"
+          EOF
+          cat KernelSU/.cargo/config.toml
+
+      - name: Build ksud
+        run: |
+          set -o pipefail
+          # The NDK's bin has to be on PATH: the build script assembles the AArch64 LKM bootstrap with
+          # the first of `aarch64-linux-gnu-gcc`, `clang`, `llvm-mc` it finds.
+          export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          cd KernelSU
+          cargo +stable build --release --locked --target aarch64-linux-android \
+            --manifest-path userspace/ksud/Cargo.toml 2>&1 | tail -5
+          binary=$(find . -type f -name ksud -path '*/aarch64-linux-android/release/*' | head -1)
+          echo "binary: $binary"
+          test -n "$binary"
+          file "$binary"
+          ls -l "$binary"
+          # The embedded module is the whole point of this job, so it is checked in the binary rather
+          # than assumed from the build having succeeded.
+          strings "$binary" | grep -q "${KMI}_kernelsu.ko" || {
+            echo "::error::the built daemon does not name ${KMI}_kernelsu.ko, so it carries no module"
+            exit 1
+          }
+          strings "$binary" | grep -q "mount_hide" || {
+            echo "::error::the daemon does not embed the mount_hide-enabled module"; exit 1; }
+        env:
+          KMI: ${{ inputs.kmi || 'android14-6.1' }}
+
+      - name: Upload the daemon
+        uses: actions/upload-artifact@v7
+        with:
+          name: ksud-susfs-${{ inputs.kmi || 'android14-6.1' }}
+          path: KernelSU/**/aarch64-linux-android/release/ksud
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------------------------
+  # The publish: the daemon into `kernelsu/`, and the entry that serves it.
+  #
+  # Its own feed, and that is the whole reason this job exists separately:
+  # `support/kernelsu-generic.json` carries **one entry per flavour**, so putting a susfs daemon in it
+  # would replace the plain `kernelsu-next` daemon for every phone on that KMI - silently turning a
+  # hiding build into the default. `support/kernelsu-generic-susfs.json` is a file of its own, in the
+  # *same* schema as that feed, so a client that can already read one can read this - which is what
+  # makes this usable from an app without a new parser.
+  #
+  # Nothing here loads anything: a publish is a commit, and a phone decides what it runs.
+  # ---------------------------------------------------------------------------------------------
+  publish:
+    name: publish susfs daemon
+    needs: daemon
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    concurrency:
+      group: publish-kernelsu-susfs
+      cancel-in-progress: false
+    steps:
+      - name: Checkout payloads
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Collect the daemon
+        uses: actions/download-artifact@v7
+        with:
+          name: ksud-susfs-${{ inputs.kmi || 'android14-6.1' }}
+          path: daemon
+
+      - name: What is being published, checked before anything is written
+        run: |
+          set -eu
+          KMI="${{ inputs.kmi || 'android14-6.1' }}"
+          binary=$(find daemon -type f -name ksud | head -1)
+          test -n "$binary" || { echo "::error::no daemon in the artifact"; exit 1; }
+          cp "$binary" "kernelsu/ksud-next-generic-susfs-$KMI"
+          file "kernelsu/ksud-next-generic-susfs-$KMI"
+          # The one property the entry claims and the client relies on: this daemon carries the merged
+          # module, named for the KMI it was built for.
+          strings "kernelsu/ksud-next-generic-susfs-$KMI" | grep -q "${KMI}_kernelsu.ko" || {
+            echo "::error::the daemon does not name ${KMI}_kernelsu.ko"; exit 1; }
+          echo "daemon: $(stat -c %s "kernelsu/ksud-next-generic-susfs-$KMI") bytes"
+          echo "sha256: $(sha256sum "kernelsu/ksud-next-generic-susfs-$KMI" | cut -d' ' -f1)"
+
+      - name: Write the entry
+        run: |
+          set -eu
+          KMI="${{ inputs.kmi || 'android14-6.1' }}"
+          python3 - "$KMI" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+
+          kmi = sys.argv[1]
+          name = f"ksud-next-generic-susfs-{kmi}"
+          path = os.path.join("kernelsu", name)
+          size = os.path.getsize(path)
+          digest = hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+          # Same shape as `kernelsu-generic.json`, so an existing reader works unchanged. `version` is
+          # the KernelSU release in the form the app compares a manager's own version against, taken from
+          # the tag this run built (`v3.4.1` -> `3.4.1`) rather than read back out of the binary.
+          version = os.environ["KSU_REF"].lstrip("vV")
+          entry = {
+              "flavor": "kernelsu-next",
+              "kmis": [kmi],
+              "daemon": {
+                  "url": "https://raw.githubusercontent.com/rushiranpise/Root-My-Galaxy-Payloads/main/kernelsu/" + name,
+                  "size": size,
+                  "sha256": digest,
+                  "version": version,
+              },
+              "susfs": True,
+          }
+          feed = {"schemaVersion": 1, "generic": [entry]}
+          with open("support/kernelsu-generic-susfs.json", "w", encoding="utf-8", newline="\n") as handle:
+              json.dump(feed, handle, indent=2, ensure_ascii=False)
+              handle.write("\n")
+          print(json.dumps(feed, indent=2))
+          PY
+
+      - name: Commit it
+        run: |
+          set -eu
+          # A publish is a commit. Without this step the daemon and its entry existed only in the runner -
+          # which is what the first run of this job did: it reported success and published nothing.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kernelsu support/kernelsu-generic-susfs.json
+          if git diff --cached --quiet; then
+            echo "nothing changed: the same module, built from the same tree, publishes the same daemon"
+            exit 0
+          fi
+          # Checked against the index, not the worktree: the file has to be in the commit, and this is the
+          # step where a missing `git add` would otherwise pass unnoticed.
+          for path in kernelsu support/kernelsu-generic-susfs.json; do
+            git ls-files --error-unmatch "$path" >/dev/null || { echo "::error::$path is not tracked"; exit 1; }
+          done
+          git commit -q -m "build(payloads): publish the susfs daemon for ${{ inputs.kmi || 'android14-6.1' }}" \
+            -m "Built from $SUSFS_REPO@$SUSFS_REF merged into KernelSU-Next $KSU_REF by the ${{ github.workflow }} workflow."
+          git pull --rebase --autostash
+          git push
