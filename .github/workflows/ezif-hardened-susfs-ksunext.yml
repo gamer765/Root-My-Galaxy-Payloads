@@ -20,7 +20,7 @@ jobs:
     name: Build EZIF KernelSU and hardened SUSFS modules
     runs-on: ubuntu-latest
     container:
-      image: ${{ env.DDK_IMAGE }}
+      image: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
       options: --privileged
     steps:
       - name: Checkout payload repository
