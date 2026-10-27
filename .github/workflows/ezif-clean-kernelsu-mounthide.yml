@@ -604,10 +604,12 @@ jobs:
             CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y CONFIG_DEBUG_INFO_BTF_MODULES= CONFIG_DEBUG_INFO_BTF= SKIP_BTF=1 KBUILD_SKIP_BTF=1 KCFLAGS="-fno-stack-protector" modules -j"$(nproc)" \
             2>&1 | tee /tmp/kbuild.log || { rc=$?; tail -120 /tmp/kbuild.log; exit "$rc"; }
           test -s kernelsu.ko
-          llvm-readelf -p .modinfo kernelsu.ko | grep -Fq "$TARGET_RELEASE"
-          llvm-strings kernelsu.ko | grep -q "mount_hide"
-          llvm-strings kernelsu.ko | grep -q "susfs_init"
-          modinfo ./kernelsu.ko | head -6
+          llvm-readelf -p .modinfo kernelsu.ko > /tmp/kernelsu.modinfo
+          grep -Fq "$TARGET_RELEASE" /tmp/kernelsu.modinfo
+          llvm-strings kernelsu.ko > /tmp/kernelsu.strings
+          grep -q "mount_hide" /tmp/kernelsu.strings
+          grep -q "susfs_init" /tmp/kernelsu.strings
+          modinfo ./kernelsu.ko | sed -n "1,6p"
 
       - name: It is the KSU module, with susfs's entry points in it
         run: |
