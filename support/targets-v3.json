@@ -513,7 +513,7 @@
       "firmware": "S928U1UEU6EZIF",
       "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
       "susfsModule": {
-        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/susfs-l-l-ezif-test/kernelsu/susfs-l-l-ezif-s928u1-test-arm64.zip",
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/2a1def92a66a3ccbdccd2388a82441c2b307ea06/kernelsu/susfs-l-l-ezif-s928u1-test-arm64.zip",
         "size": 220339,
         "sha256": "d36e9e102c2778ba4f5c6341f378c71200c6a854679e5aa8666f018ea5f346bd"
       },
