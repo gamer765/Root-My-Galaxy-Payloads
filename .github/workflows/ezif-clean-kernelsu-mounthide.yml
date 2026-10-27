@@ -323,6 +323,10 @@ jobs:
           # Replace the upstream mount walker with Liam's version, which also checks each mount's
           # source dentry path. This catches bind mounts whose destination is outside /data/adb.
           cp LiamPayloads/susfs-lkm/sus_mount.c KernelSU/kernel/susfs/sus_mount.c
+          # Keep Liam's standalone-LKM call sites on the namespaced embedded SUSFS resolver.
+          sed -i 's/\bfind_kernel_symbol_exact\b/susfs_find_kernel_symbol_exact/g' KernelSU/kernel/susfs/sus_mount.c
+          grep -q 'susfs_find_kernel_symbol_exact' KernelSU/kernel/susfs/sus_mount.c || {
+            echo "::error::mount walker is not wired to the embedded SUSFS resolver"; exit 1; }
           grep -q 'dentry_path_raw' KernelSU/kernel/susfs/sus_mount.c || {
             echo "::error::the SUSFS source-path check is missing"; exit 1; }
           python3 - <<'PY'
