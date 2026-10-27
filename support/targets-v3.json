@@ -499,7 +499,7 @@
     },
     {
       "payloadId": "e3q-S928USQU6EZIF-ksun-3.4.2-clean-susfs-mounthide",
-      "displayName": "EXPERIMENTAL | KNOWN REBOOT at KernelSU load | CLEAN KSU Next 3.4.2 + SUSFS + mount_hide | S24 Ultra EZIF",
+      "displayName": "EXPERIMENTAL | KNOWN REBOOT during test | CLEAN KSU Next 3.4.2 + SUSFS + mount_hide | S24 Ultra EZIF",
       "models": [
         "SM-S928U1"
       ],
@@ -510,7 +510,7 @@
       "experimental": true,
       "firmware": "S928U1UEU6EZIF",
       "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
-      "notes": "Known device failure: this clean build rebooted an SM-S928U1 during the KernelSU loading stage. Do not reinstall pending diagnosis. Compile passed; exact-device runtime validation failed.",
+      "notes": "Known device failure: the clean payload attempt rebooted an SM-S928U1 on EZIF. The captured install log ends during exploit root handoff, before any KernelSU staging or module-load confirmation; exact cause and stage are unconfirmed. Do not retry pending diagnosis.",
       "kernelsu": {
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-clean-mounthide",
         "size": 7301584,
