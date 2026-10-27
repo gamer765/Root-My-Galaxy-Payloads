@@ -499,7 +499,7 @@
     },
     {
       "payloadId": "e3q-S928USQU6EZIF-ksun-3.4.2-clean-susfs-mounthide",
-      "displayName": "EXPERIMENTAL | Galaxy S24 Ultra SM-S928U1 | EZIF | Kernel 6.1.162 | KernelSU Next 3.4.2 + SUSFS + mount_hide",
+      "displayName": "EXPERIMENTAL | CLEAN KernelSU Next 3.4.2 + SUSFS + mount_hide | Galaxy S24 Ultra SM-S928U1 | EZIF | Kernel 6.1.162",
       "models": [
         "SM-S928U1"
       ],
