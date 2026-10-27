@@ -582,7 +582,10 @@ jobs:
           printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
           cd KernelSU/kernel
           echo "generated init references:"
-          grep -nE '(_init\\(\\)|susfs.*init|mount_hide.*init|avc_spoof.*init)' core/init.c || true
+          grep -n '_init' core/init.c || true
+          grep -n 'susfs' core/init.c || true
+          grep -n 'mount_hide' core/init.c || true
+          grep -n 'avc_spoof' core/init.c || true
           nl -ba core/init.c | sed -n '95,120p;205,220p'
           make -C "$KDIR" M="$PWD" src="$PWD" ARCH=arm64 LLVM=1 LLVM_IAS=1 KERNELRELEASE="$TARGET_RELEASE" \
             CONFIG_KSU=m CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y \
