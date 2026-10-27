@@ -491,6 +491,14 @@ jobs:
               body = body.replace(anchor, anchor + f"\n\t{decl}\n\t{call}", 1)
               target.write_text(body)
               wired.append(call)
+          core = pathlib.Path("KernelSU/kernel/core/init.c")
+          core_text = core.read_text()
+          core_text, removed = re.subn(r"^[ \\t]*_init\\(\\);[ \\t]*\\n", "", core_text, flags=re.M)
+          if removed:
+              print(f"removed {removed} orphan _init() call(s) from the late-load path")
+          if core_text.count("(void)ksu_susfs_module_init();") != 1:
+              raise SystemExit("KernelSU core must call the embedded SUSFS initializer exactly once")
+          core.write_text(core_text)
           print("wired: " + ", ".join(wired))
           PY
 
