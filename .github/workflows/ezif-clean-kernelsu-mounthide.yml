@@ -910,7 +910,7 @@ jobs:
           payload_id = "e3q-S928USQU6EZIF-ksun-" + version + "-clean-susfs-mounthide"
           entry = {
               "payloadId": payload_id,
-              "displayName": f"EXPERIMENTAL | Galaxy S24 Ultra SM-S928U1 | EZIF | Kernel 6.1.162 | KernelSU Next {version} + SUSFS + mount_hide",
+              "displayName": f"EXPERIMENTAL | CLEAN KernelSU Next {version} + SUSFS + mount_hide | Galaxy S24 Ultra SM-S928U1 | EZIF | Kernel 6.1.162",
               "models": ["SM-S928U1"],
               "kernelVersions": ["6.1.162"],
               "manualOnly": True,
