@@ -499,7 +499,7 @@
     },
     {
       "payloadId": "e3q-S928USQU6EZIF-ksun-3.4.2-clean-susfs-mounthide",
-      "displayName": "EXPERIMENTAL | CLEAN KernelSU Next 3.4.2 + SUSFS + mount_hide | Galaxy S24 Ultra SM-S928U1 | EZIF | Kernel 6.1.162",
+      "displayName": "EXPERIMENTAL | KNOWN REBOOT at KernelSU load | CLEAN KSU Next 3.4.2 + SUSFS + mount_hide | S24 Ultra EZIF",
       "models": [
         "SM-S928U1"
       ],
@@ -510,7 +510,7 @@
       "experimental": true,
       "firmware": "S928U1UEU6EZIF",
       "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
-      "notes": "Built from clean KernelSU-Next with the Samsung KDP/RKP/DEFEX patch, fused SUSFS, JingMatrix mount_hide, and Liam's bind-mount source-path fix. Experimental; exact-device runtime testing is still required.",
+      "notes": "Known device failure: this clean build rebooted an SM-S928U1 during the KernelSU loading stage. Do not reinstall pending diagnosis. Compile passed; exact-device runtime validation failed.",
       "kernelsu": {
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-clean-mounthide",
         "size": 7301584,
