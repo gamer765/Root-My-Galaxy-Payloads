@@ -148,7 +148,10 @@ jobs:
 
           manager = Path("KernelSU/kernel/hook/syscall_hook_manager.c")
           text = manager.read_text()
-          start = text.find("if (ksu_dispatcher_nr < 0)")
+          function_start = text.find("void __init ksu_syscall_hook_manager_init(void)")
+          start = text.find("if (ksu_dispatcher_nr < 0)", function_start)
+          if function_start < 0:
+              raise SystemExit("Samsung syscall hook manager init is missing")
           if start >= 0:
               opening = text.find("{", start)
               depth = 0
