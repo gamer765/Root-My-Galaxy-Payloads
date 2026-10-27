@@ -3,10 +3,13 @@ name: Build EZIF hardened SUSFS KernelSU-Next pair
 on:
   push:
     branches: [susfs-l-l-ezif-test]
+    paths-ignore:
+      - kernelsu/**
+      - support/targets-v3.json
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   KSU_SOURCE_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
@@ -104,8 +107,21 @@ jobs:
           daemon=dist/ksud-next-e3q-S928USQU6EZIF-hardened-susfs; test -s "$daemon"; file "$daemon"
           strings "$daemon" | grep -Fq 'susfs_guard_lkm.ko'; strings "$daemon" | grep -Fq 'KernelSU Next'
           cp artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so dist/cve-2026-43499-app.so
-          sha256sum dist/* > dist/SHA256SUMS
+          cp out/${TARGET_KMI}_kernelsu.ko dist/
+          cp out/${TARGET_KMI}_susfs_guard_lkm.ko dist/
           printf '%s\n' "KernelSU-Next commit: $KSU_SOURCE_COMMIT" "Target release: $TARGET_RELEASE" "Target KMI: $TARGET_KMI" "Embedded assets: ${TARGET_KMI}_kernelsu.ko and ${TARGET_KMI}_susfs_guard_lkm.ko" "Status: experimental; exact EZIF hardware load not validated" > dist/BUILD-REPORT.txt
+          sha256sum dist/* > dist/SHA256SUMS
+      - name: Publish hardened experimental binaries
+        run: |
+          set -euo pipefail
+          mkdir -p kernelsu
+          cp dist/ksud-next-e3q-S928USQU6EZIF-hardened-susfs kernelsu/
+          (cd dist && zip -q -j ../kernelsu/susfs-hardened-e3q-S928USQU6EZIF.zip android14-6.1_kernelsu.ko android14-6.1_susfs_guard_lkm.ko BUILD-REPORT.txt)
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add kernelsu/
+          git commit -m 'Publish hardened EZIF SUSFS binaries [skip ci]'
+          git push origin HEAD:${GITHUB_REF_NAME}
       - name: Upload hardened EZIF pair
         uses: actions/upload-artifact@v4
         with:
