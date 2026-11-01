@@ -134,3 +134,5 @@ jobs:
           git add "kernelsu/$DAEMON_NAME" support/targets-v3.json
           git commit -m "Add custom Manager 33408-6 compatible late-load-sync payload"
           git push origin HEAD:main
+
+# trigger build
