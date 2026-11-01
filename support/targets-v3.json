@@ -597,6 +597,30 @@
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
         "size": 104128
       }
+    },
+    {
+      "payloadId": "e3q-S928USQU6EZIF-ksun-test-vanilla",
+      "displayName": "EXPERIMENTAL | Official KernelSU-Next test vanilla | S24 Ultra EZIF",
+      "models": [
+        "SM-S928U1"
+      ],
+      "kernelVersions": [
+        "6.1.162"
+      ],
+      "manualOnly": true,
+      "experimental": true,
+      "firmware": "S928U1UEU6EZIF",
+      "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
+      "notes": "Built from the official KernelSU-Next test branch at commit d4926628bfdd7663631c58f1149996b7be525abc, Samsung KDP/RKP/DEFEX configs enabled. SUSFS and vanilla are not included. Experimental; EZIF hardware runtime validation is pending.",
+      "kernelsu": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-test-vanilla",
+        "size": 4258952,
+        "sha256": "7173a3d66a66fbbec0e03c02525e5209b4c976ed585ce3dbd7bfa9f1f5c8bb0d"
+      },
+      "exploit": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
+        "size": 104128
+      }
     }
   ]
 }
