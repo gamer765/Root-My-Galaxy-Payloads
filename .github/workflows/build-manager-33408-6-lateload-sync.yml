@@ -1,0 +1,75 @@
+name: Build KernelSU-Next manager 33408-6 for EZIF samsung-lateload-sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-manager-33408-6-lateload-sync.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
+  KSU_COMMIT: bad09b19ca337ba35e052df2a7bee788b8bb7c83
+  DAEMON_URL: https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2-lateload-sync
+  MANAGER_CODE: "33408"
+  MANAGER_NAME: "3.4.2-6"
+
+jobs:
+  build-manager:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout samsung-lateload-sync source
+        uses: actions/checkout@v4
+        with:
+          repository: KernelSU-Next/KernelSU-Next
+          ref: ${{ env.KSU_COMMIT }}
+          path: KernelSU-Next
+          fetch-depth: 1
+
+      - name: Verify source and pin manager identifier
+        run: |
+          set -euo pipefail
+          test "$(git -C KernelSU-Next rev-parse HEAD)" = "$KSU_COMMIT"
+          test -f KernelSU-Next/manager/gradlew
+          test -f KernelSU-Next/manager/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("KernelSU-Next/manager/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace('val managerVersionCode by extra(getVersionCode())', 'val managerVersionCode by extra(33408)')
+          s = s.replace('val managerVersionName by extra(getVersionName())', 'val managerVersionName by extra("3.4.2-6")')
+          p.write_text(s)
+          PY
+          grep -Fq 'extra(33408)' KernelSU-Next/manager/build.gradle.kts
+          grep -Fq 'extra("3.4.2-6")' KernelSU-Next/manager/build.gradle.kts
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Embed samsung-lateload-sync daemon
+        run: |
+          set -euo pipefail
+          mkdir -p KernelSU-Next/manager/app/src/main/jniLibs/arm64-v8a
+          curl --fail --location --retry 3 --output KernelSU-Next/manager/app/src/main/jniLibs/arm64-v8a/libksud.so "$DAEMON_URL"
+          test -s KernelSU-Next/manager/app/src/main/jniLibs/arm64-v8a/libksud.so
+          file KernelSU-Next/manager/app/src/main/jniLibs/arm64-v8a/libksud.so
+
+      - name: Build manager release APK
+        working-directory: KernelSU-Next/manager
+        run: ./gradlew --no-daemon clean assembleRelease
+
+      - name: Upload manager APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: KernelSU-Next-manager-33408-6-S24U-EZIF-lateload-sync
+          path: KernelSU-Next/manager/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
