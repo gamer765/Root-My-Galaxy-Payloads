@@ -3,8 +3,6 @@ name: Build official KernelSU-Next test vanilla for EZIF
 on:
   push:
     branches: [main]
-    paths:
-      - .github/workflows/build-official-test-vanilla.yml
   workflow_dispatch:
 
 permissions:
@@ -23,6 +21,7 @@ env:
 
 jobs:
   build-module:
+    if: github.event.head_commit.message != 'Add experimental official test-branch vanilla EZIF payload'
     name: Build upstream Samsung KernelSU vanilla
     runs-on: ubuntu-latest
     container:
@@ -93,6 +92,7 @@ jobs:
           if-no-files-found: error
 
   build-daemon:
+    if: github.event.head_commit.message != 'Add experimental official test-branch vanilla EZIF payload'
     name: Build official ksud and publish experimental feed entry
     needs: build-module
     runs-on: ubuntu-latest
