@@ -2,7 +2,7 @@ name: Build official KernelSU Next test plus mount_hide for EZIF
 
 on:
   push:
-    branches: [ezif-official-test]
+    branches: [ezif-official-samsung-lateload]
   workflow_dispatch:
 
 permissions:
