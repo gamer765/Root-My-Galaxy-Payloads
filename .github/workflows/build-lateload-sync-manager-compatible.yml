@@ -1,0 +1,136 @@
+name: Build late-load-sync payload for Manager 33408-6
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-lateload-sync-manager-compatible.yml
+
+permissions:
+  contents: write
+
+env:
+  KSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
+  KSU_COMMIT: bad09b19ca337ba35e052df2a7bee788b8bb7c83
+  TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
+  TARGET_KMI: android14-6.1
+  MODULE_NAME: android14-6.1_kernelsu.ko
+  DAEMON_NAME: ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2-lateload-sync-manager33408-6
+  PAYLOAD_ID: e3q-S928USQU6EZIF-ksun-3.4.2-lateload-sync-manager33408-6
+  EXPLOIT_PATH: artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so
+  MANAGER_CERT_SIZE: "259"
+  MANAGER_CERT_SHA256: 4de6d1447067b4d29afb91673a5a4fddda3b45ec591cd272bf46ee0ac405cb3e
+
+jobs:
+  build-module:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Samsung late-load-sync KernelSU module for custom manager
+        run: |
+          set -euo pipefail
+          KSU_ROOT="$RUNNER_TEMP/ksu-lateload"
+          git clone --no-checkout "$KSU_REPO" "$KSU_ROOT"
+          git -C "$KSU_ROOT" checkout --detach "$KSU_COMMIT"
+          test "$(git -C "$KSU_ROOT" rev-parse HEAD)" = "$KSU_COMMIT"
+          test -n "$KDIR"
+          test -f "$KDIR/Makefile"
+          sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' "$KDIR/include/generated/utsrelease.h"
+          printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
+          cd "$KSU_ROOT/kernel"
+          make -C "$KDIR" M="$KSU_ROOT/kernel" src="$KSU_ROOT/kernel" ARCH=arm64 LLVM=1 LLVM_IAS=1 KERNELRELEASE="$TARGET_RELEASE" CONFIG_KSU=m CONFIG_KSU_SAMSUNG_KDP=y CONFIG_KSU_SAMSUNG_RKP=y CONFIG_KSU_SAMSUNG_DEFEX=y CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y KSU_NEXT_MANAGER_SIZE="$MANAGER_CERT_SIZE" KSU_NEXT_MANAGER_HASH="$MANAGER_CERT_SHA256" SKIP_BTF=1 KCFLAGS="-fno-stack-protector" modules -j"$(nproc)"
+          test -s kernelsu.ko
+          llvm-strip -d kernelsu.ko
+          llvm-readelf -p .modinfo kernelsu.ko | grep -Fq "$TARGET_RELEASE"
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          install -m 0644 kernelsu.ko "$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          sha256sum "$GITHUB_WORKSPACE/out/$MODULE_NAME" > "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
+          printf '%s\n' "Manager certificate size: $MANAGER_CERT_SIZE" "Manager certificate SHA256: $MANAGER_CERT_SHA256" "KernelSU commit: $KSU_COMMIT" "Samsung KDP/RKP/DEFEX enabled" > "$GITHUB_WORKSPACE/out/MODULE-BUILD-REPORT.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: custom-manager-compatible-module
+          path: out/
+          if-no-files-found: error
+
+  build-daemon:
+    needs: build-module
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: custom-manager-compatible-module
+          path: out
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libclang-dev unzip
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/ndk.zip" https://dl.google.com/android/repository/android-ndk-r29-linux.zip
+          unzip -q -o "$RUNNER_TEMP/ndk.zip" -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_ROOT=$RUNNER_TEMP/android-ndk-r29" >> "$GITHUB_ENV"
+          rustup target add aarch64-linux-android
+      - name: Embed module and build ksud
+        run: |
+          set -euo pipefail
+          KSU_ROOT="$RUNNER_TEMP/ksu-lateload"
+          git clone --no-checkout "$KSU_REPO" "$KSU_ROOT"
+          git -C "$KSU_ROOT" checkout --detach "$KSU_COMMIT"
+          mkdir -p "$KSU_ROOT/userspace/ksud/bin/aarch64"
+          install -m 0644 "out/$MODULE_NAME" "$KSU_ROOT/userspace/ksud/bin/aarch64/$MODULE_NAME"
+          NDK="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export PATH="$NDK/bin:$PATH"
+          export LIBCLANG_PATH="$(llvm-config --libdir)"
+          export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$NDK/sysroot -I$NDK/sysroot/usr/include/aarch64-linux-android -I$NDK/sysroot/usr/include"
+          export CC_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang"
+          export CXX_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang++"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK/bin/aarch64-linux-android35-clang"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          cargo build --locked --target aarch64-linux-android --release --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
+          mkdir -p dist
+          install -m 0755 "$KSU_ROOT/userspace/ksud/target/aarch64-linux-android/release/ksud" "dist/$DAEMON_NAME"
+          install -m 0644 "out/$MODULE_NAME" dist/
+          sha256sum dist/* > dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: custom-manager-compatible-daemon
+          path: dist/
+          if-no-files-found: error
+      - name: Publish feed entry
+        run: |
+          set -euo pipefail
+          install -m 0755 "dist/$DAEMON_NAME" "kernelsu/$DAEMON_NAME"
+          size="$(stat -c %s "dist/$DAEMON_NAME")"
+          digest="$(sha256sum "dist/$DAEMON_NAME" | cut -d' ' -f1)"
+          export PAYLOAD_SIZE="$size" PAYLOAD_SHA256="$digest"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path("support/targets-v3.json")
+          d=json.loads(p.read_text())
+          pid=os.environ["PAYLOAD_ID"]
+          if any(x.get("payloadId")==pid for x in d["payloads"]):
+              raise SystemExit("payload already exists")
+          exploit=Path(os.environ["EXPLOIT_PATH"])
+          d["payloads"].append({
+            "payloadId":pid,
+            "displayName":"EXPERIMENTAL | KernelSU Next late-load-sync + Manager 33408-6 | S24 Ultra EZIF",
+            "models":["SM-S928U1"], "kernelVersions":["6.1.162"],
+            "manualOnly":True, "experimental":True,
+            "firmware":"S928U1UEU6EZIF",
+            "kernelRelease":os.environ["TARGET_RELEASE"],
+            "notes":"Late-load-sync KernelSU module rebuilt with the certificate hash of the custom Manager 33408-6 APK. Samsung KDP/RKP/DEFEX enabled. Experimental.",
+            "kernelsu":{"url":"https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/"+os.environ["DAEMON_NAME"],"size":int(os.environ["PAYLOAD_SIZE"]),"sha256":os.environ["PAYLOAD_SHA256"]},
+            "exploit":{"url":"https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/"+os.environ["EXPLOIT_PATH"],"size":exploit.stat().st_size}
+          })
+          p.write_text(json.dumps(d,indent=2)+"\n")
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "kernelsu/$DAEMON_NAME" support/targets-v3.json
+          git commit -m "Add custom Manager 33408-6 compatible late-load-sync payload"
+          git push origin HEAD:main
