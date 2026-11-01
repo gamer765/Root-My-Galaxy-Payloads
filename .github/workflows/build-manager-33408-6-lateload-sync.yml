@@ -12,7 +12,7 @@ permissions:
 
 env:
   KSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
-  KSU_COMMIT: bad09b19ca337ba35e052df2a7bee788b8bb7c83
+  KSU_COMMIT: d4926628bfdd7663631c58f1149996b7be525abc
   DAEMON_URL: https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2-lateload-sync
   MANAGER_CODE: "33408"
   MANAGER_NAME: "3.4.2-6"
@@ -21,7 +21,7 @@ jobs:
   build-manager:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout samsung-lateload-sync source
+      - name: Checkout UAPI-6 manager source (official test branch)
         uses: actions/checkout@v4
         with:
           repository: KernelSU-Next/KernelSU-Next
