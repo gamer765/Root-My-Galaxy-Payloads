@@ -611,7 +611,7 @@
       "experimental": true,
       "firmware": "S928U1UEU6EZIF",
       "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
-      "notes": "Built from the official KernelSU-Next test branch at commit d4926628bfdd7663631c58f1149996b7be525abc, Samsung KDP/RKP/DEFEX configs enabled. SUSFS and vanilla are not included. Experimental; EZIF hardware runtime validation is pending.",
+      "notes": "Built from the official KernelSU-Next test branch at commit d4926628bfdd7663631c58f1149996b7be525abc, Samsung KDP/RKP/DEFEX configs enabled. SUSFS and mount_hide are not included. Experimental; EZIF hardware runtime validation is pending.",
       "kernelsu": {
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-test-vanilla",
         "size": 4258952,
