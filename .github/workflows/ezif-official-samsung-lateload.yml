@@ -1,8 +1,8 @@
-name: Build official KernelSU Next samsung-lateload plus mount_hide for EZIF
+name: Build official KernelSU Next test plus mount_hide for EZIF
 
 on:
   push:
-    branches: [ezif-official-samsung-lateload]
+    branches: [ezif-official-test]
   workflow_dispatch:
 
 permissions:
@@ -10,16 +10,16 @@ permissions:
 
 env:
   KSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
-  KSU_BRANCH: samsung-lateload
-  KSU_COMMIT: bad09b19ca337ba35e052df2a7bee788b8bb7c83
+  KSU_BRANCH: test
+  KSU_COMMIT: d4926628bfdd7663631c58f1149996b7be525abc
   MOUNTHIDE_REPO: LiamJ74/Root-My-Galaxy-Payloads
   MOUNTHIDE_COMMIT: e65af33032bee63617465069461e46dee744b87e
   TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
   TARGET_KMI: android14-6.1
   MODULE_NAME: android14-6.1_kernelsu.ko
-  DAEMON_NAME: ksud-next-e3q-S928USQU6EZIF-samsung-lateload-mounthide
+  DAEMON_NAME: ksud-next-e3q-S928USQU6EZIF-test-mounthide
   EXPLOIT_PATH: artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so
-  PAYLOAD_ID: e3q-S928USQU6EZIF-ksun-samsung-lateload-mounthide
+  PAYLOAD_ID: e3q-S928USQU6EZIF-ksun-test-mounthide
 
 jobs:
   build-module:
@@ -144,7 +144,7 @@ jobs:
       - name: Upload exact-release Samsung KernelSU module
         uses: actions/upload-artifact@v4
         with:
-          name: official-samsung-lateload-mounthide-module
+          name: official-test-mounthide-module
           path: out/
           if-no-files-found: error
 
@@ -159,7 +159,7 @@ jobs:
       - name: Download exact-release module
         uses: actions/download-artifact@v4
         with:
-          name: official-samsung-lateload-mounthide-module
+          name: official-test-mounthide-module
           path: out
 
       - name: Install host dependencies and Android NDK
@@ -211,7 +211,7 @@ jobs:
       - name: Upload daemon and module for review
         uses: actions/upload-artifact@v4
         with:
-          name: official-samsung-lateload-mounthide-daemon-module
+          name: official-test-mounthide-daemon-module
           path: dist/
           if-no-files-found: error
 
@@ -246,7 +246,7 @@ jobs:
           exploit_path = Path("feed/" + os.environ["EXPLOIT_PATH"])
           item = {
               "payloadId": payload_id,
-              "displayName": "EXPERIMENTAL | Official KernelSU-Next samsung-lateload + mount_hide | S24 Ultra EZIF",
+              "displayName": "EXPERIMENTAL | Official KernelSU-Next test + mount_hide | S24 Ultra EZIF",
               "models": ["SM-S928U1"],
               "kernelVersions": ["6.1.162"],
               "manualOnly": True,
@@ -254,7 +254,7 @@ jobs:
               "firmware": "S928U1UEU6EZIF",
               "kernelRelease": os.environ["TARGET_RELEASE"],
               "notes": (
-                  "Built from the official KernelSU-Next samsung-lateload branch at "
+                  "Built from the official KernelSU-Next test branch at "
                   "commit " + os.environ["KSU_COMMIT"] +
                   ", with JingMatrix mount_hide integrated from the pinned "
                   "Root-My-Galaxy source commit " + os.environ["MOUNTHIDE_COMMIT"] +
@@ -281,5 +281,5 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add "kernelsu/$DAEMON_NAME" support/targets-v3.json
-          git commit -m "Add experimental official Samsung-lateload mount_hide EZIF payload"
+          git commit -m "Add experimental official test-branch mount_hide EZIF payload"
           git push origin HEAD:main
