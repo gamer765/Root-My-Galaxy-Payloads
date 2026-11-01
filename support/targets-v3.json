@@ -621,6 +621,30 @@
         "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
         "size": 104128
       }
+    },
+    {
+      "payloadId": "e3q-S928USQU6EZIF-ksun-3.4.2-lateload-sync-manager33408-6",
+      "displayName": "EXPERIMENTAL | KernelSU Next late-load-sync + Manager 33408-6 | S24 Ultra EZIF",
+      "models": [
+        "SM-S928U1"
+      ],
+      "kernelVersions": [
+        "6.1.162"
+      ],
+      "manualOnly": true,
+      "experimental": true,
+      "firmware": "S928U1UEU6EZIF",
+      "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
+      "notes": "Late-load-sync KernelSU module rebuilt with the certificate hash of the custom Manager 33408-6 APK. Samsung KDP/RKP/DEFEX enabled. Experimental.",
+      "kernelsu": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-e3q-S928USQU6EZIF-kdp-ksun-3.4.2-lateload-sync-manager33408-6",
+        "size": 4139936,
+        "sha256": "5fdd26ef58fda30a9e71b356f02dc038cb3f337bea7196881d1759b797fe8f66"
+      },
+      "exploit": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
+        "size": 104128
+      }
     }
   ]
 }
