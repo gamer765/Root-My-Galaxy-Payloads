@@ -3,6 +3,8 @@ name: Build official KernelSU-Next test vanilla for EZIF
 on:
   push:
     branches: [main]
+    paths:
+      - .github/workflows/build-official-test-vanilla.yml
   workflow_dispatch:
 
 permissions:
@@ -12,7 +14,7 @@ env:
   KSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
   KSU_BRANCH: test
   KSU_COMMIT: d4926628bfdd7663631c58f1149996b7be525abc
-      TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
+  TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
   TARGET_KMI: android14-6.1
   MODULE_NAME: android14-6.1_kernelsu.ko
   DAEMON_NAME: ksud-next-e3q-S928USQU6EZIF-test-vanilla
