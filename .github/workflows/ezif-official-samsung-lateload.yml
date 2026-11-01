@@ -1,0 +1,287 @@
+name: Build official KernelSU Next test plus mount_hide for EZIF
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  KSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
+  KSU_BRANCH: test
+  KSU_COMMIT: d4926628bfdd7663631c58f1149996b7be525abc
+  MOUNTHIDE_REPO: LiamJ74/Root-My-Galaxy-Payloads
+  MOUNTHIDE_COMMIT: e65af33032bee63617465069461e46dee744b87e
+  TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
+  TARGET_KMI: android14-6.1
+  MODULE_NAME: android14-6.1_kernelsu.ko
+  DAEMON_NAME: ksud-next-e3q-S928USQU6EZIF-test-mounthide
+  EXPLOIT_PATH: artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so
+  PAYLOAD_ID: e3q-S928USQU6EZIF-ksun-test-mounthide
+
+jobs:
+  build-module:
+    if: github.event.head_commit.message != 'Add experimental official test-branch mount_hide EZIF payload'
+    name: Build upstream Samsung KernelSU plus mount_hide
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
+      options: --privileged
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned mount_hide source
+        uses: actions/checkout@v4
+        with:
+          repository: LiamJ74/Root-My-Galaxy-Payloads
+          ref: e65af33032bee63617465069461e46dee744b87e
+          path: MountHideSource
+
+      - name: Checkout exact official Samsung test branch
+        run: |
+          set -euo pipefail
+          KSU_ROOT="$RUNNER_TEMP/ksu-official"
+          git clone --branch "$KSU_BRANCH" --single-branch "$KSU_REPO" "$KSU_ROOT"
+          test "$(git -C "$KSU_ROOT" rev-parse HEAD)" = "$KSU_COMMIT"
+          test "$(git -C "$KSU_ROOT" branch --show-current)" = "$KSU_BRANCH"
+          grep -Fq 'config KSU_SAMSUNG_KDP' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'config KSU_SAMSUNG_RKP' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'config KSU_SAMSUNG_DEFEX' "$KSU_ROOT/kernel/Kconfig"
+          grep -Fq 'config KSU_SAMSUNG_NO_PATCH_TEXT' "$KSU_ROOT/kernel/Kconfig"
+
+          mkdir -p "$KSU_ROOT/kernel/feature"
+          install -m 0644 MountHideSource/susfs-lkm/mount_hide.c             "$KSU_ROOT/kernel/feature/mount_hide.c"
+          install -m 0644 MountHideSource/susfs-lkm/mount_hide.h             "$KSU_ROOT/kernel/feature/mount_hide.h"
+
+          python3 - "$KSU_ROOT" <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+          kbuild = root / "kernel/Kbuild"
+          text = kbuild.read_text()
+          anchor = "kernelsu-objs += feature/kernel_umount.o"
+          entry = "kernelsu-objs += feature/mount_hide.o"
+          if entry not in text:
+              if text.count(anchor) != 1:
+                  raise SystemExit("Kbuild anchor for kernel_umount is missing or ambiguous")
+              text = text.replace(anchor, anchor + "\n" + entry, 1)
+          define = "ccflags-y += -DKSU_FEATURE_MOUNT_HIDE=10004"
+          if define not in text:
+              text += "\n# JingMatrix mount_hide feature id.\n" + define + "\n"
+          kbuild.write_text(text)
+
+          init = root / "kernel/core/init.c"
+          text = init.read_text()
+          include = '#include "feature/mount_hide.h"'
+          if include not in text:
+              anchor = '#include "feature/selinux_hide.h"'
+              if text.count(anchor) != 1:
+                  raise SystemExit("init.c include anchor is missing or ambiguous")
+              text = text.replace(anchor, anchor + "\n" + include, 1)
+          start = "ksu_feature_init();"
+          if "ksu_mount_hide_init();" not in text:
+              if text.count(start) != 1:
+                  raise SystemExit("init.c feature initialization anchor is missing or ambiguous")
+              text = text.replace(start, start + "\n\tksu_mount_hide_init();", 1)
+          stop = "ksu_feature_exit();"
+          if "ksu_mount_hide_exit();" not in text:
+              if text.count(stop) != 1:
+                  raise SystemExit("init.c feature shutdown anchor is missing or ambiguous")
+              text = text.replace(stop, "ksu_mount_hide_exit();\n\t" + stop, 1)
+          init.write_text(text)
+          PY
+
+          grep -Fq 'feature/mount_hide.o' "$KSU_ROOT/kernel/Kbuild"
+          grep -Fq 'ksu_mount_hide_init();' "$KSU_ROOT/kernel/core/init.c"
+          grep -Fq 'ksu_mount_hide_exit();' "$KSU_ROOT/kernel/core/init.c"
+          test -n "$KDIR"
+          test -f "$KDIR/Makefile"
+          sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|'             "$KDIR/include/generated/utsrelease.h"
+          printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
+          grep -Fq "$TARGET_RELEASE" "$KDIR/include/generated/utsrelease.h"
+          grep -Fq "$TARGET_RELEASE" "$KDIR/include/config/kernel.release"
+
+          cd "$KSU_ROOT/kernel"
+          set +e
+          make -C "$KDIR" M="$KSU_ROOT/kernel" src="$KSU_ROOT/kernel"             ARCH=arm64 LLVM=1 LLVM_IAS=1 KERNELRELEASE="$TARGET_RELEASE"             CONFIG_KSU=m             CONFIG_KSU_SAMSUNG_KDP=y             CONFIG_KSU_SAMSUNG_RKP=y             CONFIG_KSU_SAMSUNG_DEFEX=y             CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT=y             SKIP_BTF=1 KCFLAGS="-fno-stack-protector" modules -j"$(nproc)"
+          build_rc=$?
+          set -e
+          if [ "$build_rc" -ne 0 ] && [ ! -s kernelsu.ko ]; then
+            exit "$build_rc"
+          fi
+
+          test -s kernelsu.ko
+          llvm-strip -d kernelsu.ko
+          llvm-readelf -p .modinfo kernelsu.ko > "$RUNNER_TEMP/modinfo.txt"
+          llvm-readelf -SW kernelsu.ko > "$RUNNER_TEMP/sections.txt"
+          llvm-nm -a kernelsu.ko > "$RUNNER_TEMP/symbols.txt"
+          grep -Fq "$TARGET_RELEASE" "$RUNNER_TEMP/modinfo.txt"
+          grep -Eq '__versions.* 000000 ' "$RUNNER_TEMP/sections.txt"
+          grep -Eq ' [A-Za-z] ksu_samsung_kdp_init$' "$RUNNER_TEMP/symbols.txt"
+          grep -Eq ' [A-Za-z] ksu_samsung_defex_init$' "$RUNNER_TEMP/symbols.txt"
+          grep -Eq ' [A-Za-z] ksu_samsung_rkp_init$' "$RUNNER_TEMP/symbols.txt"
+          grep -Eq ' [A-Za-z] ksu_mount_hide_init$' "$RUNNER_TEMP/symbols.txt"
+
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          install -m 0644 kernelsu.ko "$GITHUB_WORKSPACE/out/$MODULE_NAME"
+          sha256sum "$GITHUB_WORKSPACE/out/$MODULE_NAME" > "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
+          {
+            echo "KernelSU-Next branch: $KSU_BRANCH"
+            echo "KernelSU-Next commit: $KSU_COMMIT"
+            echo "mount_hide source repository: $MOUNTHIDE_REPO"
+            echo "mount_hide source commit: $MOUNTHIDE_COMMIT"
+            echo "Target release: $TARGET_RELEASE"
+            echo "Target KMI: $TARGET_KMI"
+            echo "Samsung configs: KDP, RKP, DEFEX, NO_PATCH_TEXT enabled"
+            echo "SUSFS integration: not included"
+            echo "Mount hiding: mount_hide feature enabled"
+            cat "$GITHUB_WORKSPACE/out/MODULE-SHA256SUM"
+          } > "$GITHUB_WORKSPACE/out/MODULE-BUILD-REPORT.txt"
+
+      - name: Upload exact-release Samsung KernelSU module
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-test-mounthide-module
+          path: out/
+          if-no-files-found: error
+
+  build-daemon:
+    if: github.event.head_commit.message != 'Add experimental official test-branch mount_hide EZIF payload'
+    name: Build official ksud and publish experimental feed entry
+    needs: build-module
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout payload repository
+        uses: actions/checkout@v4
+
+      - name: Download exact-release module
+        uses: actions/download-artifact@v4
+        with:
+          name: official-test-mounthide-module
+          path: out
+
+      - name: Install host dependencies and Android NDK
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libclang-dev unzip
+          archive="$RUNNER_TEMP/android-ndk-r29-linux.zip"
+          curl --fail --location --retry 3 --retry-delay 2             --output "$archive"             https://dl.google.com/android/repository/android-ndk-r29-linux.zip
+          unzip -q -o "$archive" -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_ROOT=$RUNNER_TEMP/android-ndk-r29" >> "$GITHUB_ENV"
+
+      - name: Install Rust Android target
+        run: rustup target add aarch64-linux-android
+
+      - name: Checkout exact official source and embed the built module
+        run: |
+          set -euo pipefail
+          KSU_ROOT="$RUNNER_TEMP/ksu-official"
+          git clone --branch "$KSU_BRANCH" --single-branch "$KSU_REPO" "$KSU_ROOT"
+          test "$(git -C "$KSU_ROOT" rev-parse HEAD)" = "$KSU_COMMIT"
+          test "$(git -C "$KSU_ROOT" branch --show-current)" = "$KSU_BRANCH"
+          mkdir -p "$KSU_ROOT/userspace/ksud/bin/aarch64"
+          install -m 0644 "out/$MODULE_NAME"             "$KSU_ROOT/userspace/ksud/bin/aarch64/$MODULE_NAME"
+          llvm-readelf -p .modinfo "out/$MODULE_NAME" | grep -Fq "$TARGET_RELEASE"
+
+      - name: Build upstream ksud for Android arm64
+        run: |
+          set -euo pipefail
+          KSU_ROOT="$RUNNER_TEMP/ksu-official"
+          NDK="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          export PATH="$NDK/bin:$PATH"
+          export LIBCLANG_PATH="$(llvm-config --libdir)"
+          export BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android="--sysroot=$NDK/sysroot -I$NDK/sysroot/usr/include/aarch64-linux-android -I$NDK/sysroot/usr/include"
+          export CC_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang"
+          export CXX_aarch64_linux_android="$NDK/bin/aarch64-linux-android35-clang++"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK/bin/aarch64-linux-android35-clang"
+          export CARGO_NET_GIT_FETCH_WITH_CLI=true
+          cargo build --locked --target aarch64-linux-android --release             --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
+          mkdir -p dist
+          install -m 0755             "$KSU_ROOT/userspace/ksud/target/aarch64-linux-android/release/ksud"             "dist/$DAEMON_NAME"
+          install -m 0644 "out/$MODULE_NAME" dist/
+          file "dist/$DAEMON_NAME"
+          llvm-readelf -h "dist/$DAEMON_NAME" | grep -Fq AArch64
+          strings "dist/$DAEMON_NAME" | grep -Fq "$MODULE_NAME"
+          strings "dist/$DAEMON_NAME" | grep -Fq 'KernelSU Next'
+          sha256sum dist/* > dist/SHA256SUMS
+
+      - name: Upload daemon and module for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-test-mounthide-daemon-module
+          path: dist/
+          if-no-files-found: error
+
+      - name: Checkout feed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: feed
+
+      - name: Publish manual-only experimental feed entry
+        run: |
+          set -euo pipefail
+          daemon="dist/$DAEMON_NAME"
+          exploit="feed/$EXPLOIT_PATH"
+          test -s "$daemon"
+          test -s "$exploit"
+          install -m 0755 "$daemon" "feed/kernelsu/$DAEMON_NAME"
+          size="$(stat -c %s "$daemon")"
+          digest="$(sha256sum "$daemon" | cut -d' ' -f1)"
+          export PAYLOAD_SIZE="$size" PAYLOAD_SHA256="$digest"
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("feed/support/targets-v3.json")
+          data = json.loads(path.read_text())
+          payload_id = os.environ["PAYLOAD_ID"]
+          if any(item.get("payloadId") == payload_id for item in data["payloads"]):
+              raise SystemExit(f"payload already exists: {payload_id}")
+          exploit_path = Path("feed/" + os.environ["EXPLOIT_PATH"])
+          item = {
+              "payloadId": payload_id,
+              "displayName": "EXPERIMENTAL | Official KernelSU-Next test + mount_hide | S24 Ultra EZIF",
+              "models": ["SM-S928U1"],
+              "kernelVersions": ["6.1.162"],
+              "manualOnly": True,
+              "experimental": True,
+              "firmware": "S928U1UEU6EZIF",
+              "kernelRelease": os.environ["TARGET_RELEASE"],
+              "notes": (
+                  "Built from the official KernelSU-Next test branch at "
+                  "commit " + os.environ["KSU_COMMIT"] +
+                  ", with JingMatrix mount_hide integrated from the pinned "
+                  "Root-My-Galaxy source commit " + os.environ["MOUNTHIDE_COMMIT"] +
+                  ". Samsung KDP/RKP/DEFEX configs enabled. SUSFS is not included. "
+                  "Experimental; EZIF hardware runtime validation is pending."
+              ),
+              "kernelsu": {
+                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/"
+                         + os.environ["DAEMON_NAME"],
+                  "size": int(os.environ["PAYLOAD_SIZE"]),
+                  "sha256": os.environ["PAYLOAD_SHA256"]
+              },
+              "exploit": {
+                  "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/"
+                         + os.environ["EXPLOIT_PATH"],
+                  "size": exploit_path.stat().st_size
+              }
+          }
+          data["payloads"].append(item)
+          path.write_text(json.dumps(data, indent=2) + "\n")
+          PY
+
+          cd feed
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "kernelsu/$DAEMON_NAME" support/targets-v3.json
+          git commit -m "Add experimental official test-branch mount_hide EZIF payload"
+          git push origin HEAD:main
