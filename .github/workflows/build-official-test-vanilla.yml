@@ -71,7 +71,6 @@ jobs:
           grep -Eq ' [A-Za-z] ksu_samsung_kdp_init$' "$RUNNER_TEMP/symbols.txt"
           grep -Eq ' [A-Za-z] ksu_samsung_defex_init$' "$RUNNER_TEMP/symbols.txt"
           grep -Eq ' [A-Za-z] ksu_samsung_rkp_init$' "$RUNNER_TEMP/symbols.txt"
-          grep -Eq ' [A-Za-z] ksu_vanilla_init$' "$RUNNER_TEMP/symbols.txt"
 
           mkdir -p "$GITHUB_WORKSPACE/out"
           install -m 0644 kernelsu.ko "$GITHUB_WORKSPACE/out/$MODULE_NAME"
@@ -79,7 +78,7 @@ jobs:
           {
             echo "KernelSU-Next branch: $KSU_BRANCH"
             echo "KernelSU-Next commit: $KSU_COMMIT"
-            echo "vanilla source repository: $            echo "vanilla source commit: $            echo "Target release: $TARGET_RELEASE"
+            echo "Target release: $TARGET_RELEASE"
             echo "Target KMI: $TARGET_KMI"
             echo "Samsung configs: KDP, RKP, DEFEX, NO_PATCH_TEXT enabled"
             echo "SUSFS integration: not included"
