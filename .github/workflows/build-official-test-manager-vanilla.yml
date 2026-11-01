@@ -1,0 +1,64 @@
+name: Build official KernelSU-Next test vanilla manager for EZIF
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-official-test-manager-vanilla.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
+  KSU_BRANCH: test
+  KSU_COMMIT: d4926628bfdd7663631c58f1149996b7be525abc
+  DAEMON_URL: https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-test-vanilla
+
+jobs:
+  build-manager:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout official KernelSU-Next test source
+        uses: actions/checkout@v4
+        with:
+          repository: KernelSU-Next/KernelSU-Next
+          ref: d4926628bfdd7663631c58f1149996b7be525abc
+          path: KernelSU-Next
+          fetch-depth: 1
+
+      - name: Verify source commit
+        run: |
+          set -euo pipefail
+          test "$(git -C KernelSU-Next rev-parse HEAD)" = "$KSU_COMMIT"
+          test -f KernelSU-Next/manager/gradlew
+          test -f KernelSU-Next/manager/app/build.gradle.kts
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configure Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Embed S24 Ultra arm64 daemon
+        run: |
+          set -euo pipefail
+          mkdir -p KernelSU-Next/manager/app/src/main/jniLibs/arm64-v8a
+          curl --fail --location --retry 3 --output KernelSU-Next/manager/app/src/main/jniLibs/arm64-v8a/libksud.so "$DAEMON_URL"
+          test -s KernelSU-Next/manager/app/src/main/jniLibs/arm64-v8a/libksud.so
+          file KernelSU-Next/manager/app/src/main/jniLibs/arm64-v8a/libksud.so
+
+      - name: Build manager release APK
+        working-directory: KernelSU-Next/manager
+        run: ./gradlew --no-daemon clean assembleRelease
+
+      - name: Upload manager APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: KernelSU-Next-test-vanilla-manager-S24U-EZIF
+          path: KernelSU-Next/manager/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
