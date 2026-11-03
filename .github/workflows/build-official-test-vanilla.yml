@@ -11,13 +11,14 @@ permissions:
 env:
   KSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
   KSU_BRANCH: test
-  KSU_COMMIT: d4926628bfdd7663631c58f1149996b7be525abc
+  KSU_COMMIT: 625c9d573f81209a1f845f2d40264d7022b784a6
   TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
   TARGET_KMI: android14-6.1
   MODULE_NAME: android14-6.1_kernelsu.ko
-  DAEMON_NAME: ksud-next-e3q-S928USQU6EZIF-test-vanilla
+  AUDIT_MODULE_NAME: android14-6.1_kernelsu-e3q-S928USQU6EZIF-test-625c9d5.ko
+  DAEMON_NAME: ksud-next-e3q-S928USQU6EZIF-test-625c9d5
   EXPLOIT_PATH: artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so
-  PAYLOAD_ID: e3q-S928USQU6EZIF-ksun-test-vanilla
+  PAYLOAD_ID: e3q-S928USQU6EZIF-ksun-test-625c9d5
 
 jobs:
   build-module:
@@ -130,6 +131,20 @@ jobs:
           install -m 0644 "out/$MODULE_NAME"             "$KSU_ROOT/userspace/ksud/bin/aarch64/$MODULE_NAME"
           llvm-readelf -p .modinfo "out/$MODULE_NAME" | grep -Fq "$TARGET_RELEASE"
 
+      - name: Build ksuinit for Android arm64
+        run: |
+          set -euo pipefail
+          KSU_ROOT="$RUNNER_TEMP/ksu-official"
+          NDK="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
+          CLANG_PATH="$NDK/bin/aarch64-linux-android26-clang"
+          export PATH="$NDK/bin:$PATH"
+          export CLANG_PATH
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CLANG_PATH"
+          BUILTINS="$("$CLANG_PATH" --print-resource-dir)/lib/linux/libclang_rt.builtins-aarch64-android.a"
+          export RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wno-unused-command-line-argument -C link-arg=$BUILTINS"
+          cargo build --target=aarch64-linux-android --release --manifest-path "$KSU_ROOT/userspace/ksuinit/Cargo.toml"
+          install -m 0755 "$KSU_ROOT/userspace/ksuinit/target/aarch64-linux-android/release/ksuinit" "$KSU_ROOT/userspace/ksud/bin/aarch64/ksuinit"
+
       - name: Build upstream ksud for Android arm64
         run: |
           set -euo pipefail
@@ -145,7 +160,7 @@ jobs:
           cargo build --locked --target aarch64-linux-android --release             --manifest-path "$KSU_ROOT/userspace/ksud/Cargo.toml"
           mkdir -p dist
           install -m 0755             "$KSU_ROOT/userspace/ksud/target/aarch64-linux-android/release/ksud"             "dist/$DAEMON_NAME"
-          install -m 0644 "out/$MODULE_NAME" dist/
+          install -m 0644 "out/$MODULE_NAME" "dist/$AUDIT_MODULE_NAME"
           file "dist/$DAEMON_NAME"
           llvm-readelf -h "dist/$DAEMON_NAME" | grep -Fq AArch64
           strings "dist/$DAEMON_NAME" | grep -Fq "$MODULE_NAME"
@@ -173,6 +188,7 @@ jobs:
           test -s "$daemon"
           test -s "$exploit"
           install -m 0755 "$daemon" "feed/kernelsu/$DAEMON_NAME"
+          install -m 0644 "dist/$AUDIT_MODULE_NAME" "feed/kernelsu/$AUDIT_MODULE_NAME"
           size="$(stat -c %s "$daemon")"
           digest="$(sha256sum "$daemon" | cut -d' ' -f1)"
           export PAYLOAD_SIZE="$size" PAYLOAD_SHA256="$digest"
@@ -185,12 +201,13 @@ jobs:
           path = Path("feed/support/targets-v3.json")
           data = json.loads(path.read_text())
           payload_id = os.environ["PAYLOAD_ID"]
-          if any(item.get("payloadId") == payload_id for item in data["payloads"]):
+          data.setdefault("experimentalPayloads", [])
+          if any(item.get("payloadId") == payload_id for item in data["experimentalPayloads"]):
               raise SystemExit(f"payload already exists: {payload_id}")
           exploit_path = Path("feed/" + os.environ["EXPLOIT_PATH"])
           item = {
               "payloadId": payload_id,
-              "displayName": "EXPERIMENTAL | Official KernelSU-Next test vanilla | S24 Ultra EZIF",
+              "displayName": "EXPERIMENTAL | Official KernelSU-Next test vanilla (625c9d5) | S24 Ultra EZIF",
               "models": ["SM-S928U1"],
               "kernelVersions": ["6.1.162"],
               "manualOnly": True,
@@ -200,7 +217,7 @@ jobs:
               "notes": (
                   "Built from the official KernelSU-Next test branch at "
                   "commit " + os.environ["KSU_COMMIT"] +
-                  ", Samsung KDP/RKP/DEFEX configs enabled. SUSFS and vanilla are not included. "
+                  ", Samsung KDP/RKP/DEFEX configs enabled. SUSFS and mount_hide are not included. "
                   "Experimental; EZIF hardware runtime validation is pending."
               ),
               "kernelsu": {
@@ -215,13 +232,13 @@ jobs:
                   "size": exploit_path.stat().st_size
               }
           }
-          data["payloads"].append(item)
+          data["experimentalPayloads"].append(item)
           path.write_text(json.dumps(data, indent=2) + "\n")
           PY
 
           cd feed
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add "kernelsu/$DAEMON_NAME" support/targets-v3.json
+          git add "kernelsu/$DAEMON_NAME" "kernelsu/$AUDIT_MODULE_NAME" support/targets-v3.json
           git commit -m "Add experimental official test-branch vanilla EZIF payload"
           git push origin HEAD:main

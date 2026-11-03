@@ -23,7 +23,10 @@ env:
 
 jobs:
   build-module:
-    if: github.event.head_commit.message != 'Add experimental official test-branch mount_hide EZIF payload'
+    if: >-
+      github.event.head_commit.message != 'Pin official test-branch vanilla build to 625c9d5' &&
+      github.event.head_commit.message != 'Add experimental official test-branch vanilla EZIF payload' &&
+      github.event.head_commit.message != 'Add experimental official test-branch mount_hide EZIF payload'
     name: Build upstream Samsung KernelSU plus mount_hide
     runs-on: ubuntu-latest
     container:
@@ -150,7 +153,10 @@ jobs:
           if-no-files-found: error
 
   build-daemon:
-    if: github.event.head_commit.message != 'Add experimental official test-branch mount_hide EZIF payload'
+    if: >-
+      github.event.head_commit.message != 'Pin official test-branch vanilla build to 625c9d5' &&
+      github.event.head_commit.message != 'Add experimental official test-branch vanilla EZIF payload' &&
+      github.event.head_commit.message != 'Add experimental official test-branch mount_hide EZIF payload'
     name: Build official ksud and publish experimental feed entry
     needs: build-module
     runs-on: ubuntu-latest
