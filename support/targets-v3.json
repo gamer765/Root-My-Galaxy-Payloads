@@ -19,5 +19,31 @@
         "size": 4254920
       }
     }
+  ],
+  "experimentalPayloads": [
+    {
+      "payloadId": "e3q-S928USQU6EZIF-ksun-test-625c9d5",
+      "displayName": "EXPERIMENTAL | Official KernelSU-Next test vanilla (625c9d5) | S24 Ultra EZIF",
+      "models": [
+        "SM-S928U1"
+      ],
+      "kernelVersions": [
+        "6.1.162"
+      ],
+      "manualOnly": true,
+      "experimental": true,
+      "firmware": "S928U1UEU6EZIF",
+      "kernelRelease": "6.1.162-android14-11-34343818-abS928USQU6EZIF",
+      "notes": "Built from the official KernelSU-Next test branch at commit 625c9d573f81209a1f845f2d40264d7022b784a6, Samsung KDP/RKP/DEFEX configs enabled. SUSFS and mount_hide are not included. Experimental; EZIF hardware runtime validation is pending.",
+      "kernelsu": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/kernelsu/ksud-next-e3q-S928USQU6EZIF-test-625c9d5",
+        "size": 4590888,
+        "sha256": "a4a3808548e360e3885cf650e8a9aedf55315a251c950cdc14d864de9ec01d82"
+      },
+      "exploit": {
+        "url": "https://raw.githubusercontent.com/gamer765/Root-My-Galaxy-Payloads/main/artifacts/e3q-S928USQU6EZIF/cve-2026-43499-app-legacy-s928.so",
+        "size": 104128
+      }
+    }
   ]
 }
