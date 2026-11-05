@@ -17,6 +17,7 @@ env:
   TARGET_RELEASE: 6.1.162-android14-11-34343818-abS928USQU6EZIF
   TARGET_KMI: android14-6.1
   DDK_IMAGE: ghcr.io/ylarod/ddk-min:android14-6.1-20260313
+  SAMSUNG_PATCH_URL: https://raw.githubusercontent.com/LiamJ74/Root-My-Galaxy-Payloads/main/kernelsu/patches/KernelSU-Next-v3.4.2-samsung-kdp-rkp-defex.patch
 
 jobs:
   build-kernel-modules:
@@ -36,6 +37,18 @@ jobs:
           root="$RUNNER_TEMP/ksunext-susfs"
           git clone --no-checkout "$KSU_SOURCE_REPO" "$root"
           git -C "$root" checkout --detach "$KSU_SOURCE_COMMIT"
+          patch="$RUNNER_TEMP/samsung-kdp-rkp-defex.patch"
+          curl --fail --location --retry 3 "$SAMSUNG_PATCH_URL" --output "$patch"
+          set +e
+          git -C "$root" apply --3way "$patch"
+          patch_rc=$?
+          set -e
+          if [ "$patch_rc" -ne 0 ]; then
+            sed -i "/^<<<<<<< ours$/,/^>>>>>>> theirs$/c\\#include \"preinit/preinit.h\"\\n#include \"ksu_samsung_kdp.h\"\\n#include \"compat/samsung_defex.h\"" "$root/kernel/core/init.c"
+            git -C "$root" add -A
+          fi
+          test ! -f "$root/kernel/core/init.c.rej"
+          grep -R -n -E "^(<<<<<<< |=======|>>>>>>> )" "$root/kernel" && exit 1 || true
           sed -i -E 's|^#define UTS_RELEASE ".*"|#define UTS_RELEASE "'"$TARGET_RELEASE"'"|' "$KDIR/include/generated/utsrelease.h"
           printf '%s\n' "$TARGET_RELEASE" > "$KDIR/include/config/kernel.release"
           mkdir -p "$GITHUB_WORKSPACE/out"
