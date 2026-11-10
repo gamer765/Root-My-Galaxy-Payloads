@@ -1,0 +1,98 @@
+name: Build Vector PR 1041
+
+on:
+  push:
+    branches:
+      - codex/vector-pr1041-build
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build exact Vector PR commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      VECTOR_REPOSITORY: VeryBaaad/Vector
+      VECTOR_COMMIT: ed0fe0f75a69936d64094f8b95bd99b7469010e3
+      PAYLOAD_REPOSITORY: gamer765/Root-My-Galaxy-Payloads
+    steps:
+      - name: Checkout Vector PR source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.VECTOR_REPOSITORY }}
+          ref: ${{ env.VECTOR_COMMIT }}
+          submodules: recursive
+          fetch-depth: 0
+          path: vector
+
+      - name: Verify source revision
+        working-directory: vector
+        run: |
+          test "$(git rev-parse HEAD)" = "$VECTOR_COMMIT"
+          git submodule status --recursive
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Configure Gradle
+        run: |
+          mkdir -p ~/.gradle
+          printf '%s\n' 'org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8 -XX:+UseParallelGC' >> ~/.gradle/gradle.properties
+          printf '%s\n' 'org.gradle.parallel=true' >> ~/.gradle/gradle.properties
+
+      - name: Build debug and release module ZIPs
+        working-directory: vector
+        run: ./gradlew --no-daemon --console=plain zipAll
+
+      - name: Verify and checksum packages
+        working-directory: vector
+        run: |
+          set -euo pipefail
+          test -s zygisk/release/Vector-v*-Release.zip
+          test -s zygisk/release/Vector-v*-Debug.zip
+          unzip -t zygisk/release/Vector-v*-Release.zip
+          unzip -t zygisk/release/Vector-v*-Debug.zip
+          sha256sum zygisk/release/Vector-v*-Release.zip zygisk/release/Vector-v*-Debug.zip > zygisk/release/SHA256SUMS.txt
+          cat zygisk/release/SHA256SUMS.txt
+
+      - name: Save workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vector-PR1041-ed0fe0f
+          path: |
+            vector/zygisk/release/Vector-v*-Release.zip
+            vector/zygisk/release/Vector-v*-Debug.zip
+            vector/zygisk/release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Publish persistent prerelease assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ env.PAYLOAD_REPOSITORY }}
+        working-directory: vector
+        run: |
+          set -euo pipefail
+          tag="vector-pr1041-ed0fe0f-${GITHUB_RUN_ID}"
+          gh release create "$tag" \
+            --repo "$PAYLOAD_REPOSITORY" \
+            --prerelease \
+            --target "${GITHUB_SHA}" \
+            --title "Vector PR #1041 build (${GITHUB_RUN_ID})" \
+            --notes "Build of [VeryBaaad/Vector commit `ed0fe0f`](https://github.com/VeryBaaad/Vector/commit/${VECTOR_COMMIT}).\n\nBuilt by [GitHub Actions run ${GITHUB_RUN_ID}](https://github.com/${PAYLOAD_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}). Contains debug and release Magisk module ZIPs plus SHA-256 checksums." \
+            zygisk/release/Vector-v*-Release.zip \
+            zygisk/release/Vector-v*-Debug.zip \
+            zygisk/release/SHA256SUMS.txt
