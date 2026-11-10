@@ -48,6 +48,9 @@ jobs:
         with:
           version: 1.13.2
 
+      - name: Remove Android SDK CMake
+        run: rm -rf "$ANDROID_HOME/cmake"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
